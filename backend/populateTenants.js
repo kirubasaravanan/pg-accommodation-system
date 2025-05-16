@@ -21,6 +21,42 @@ mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopol
     await Tenant.deleteMany({}); // Clear existing tenants
     // Reset all room occupancies to 0
     await Room.updateMany({}, { $set: { 'occupancy.current': 0 } });
+    // Enforce: All active tenants must have a room, inactive tenants must not
+    const assignedRooms = tenants.filter(t => t.status === 'Active' && t.room).map(t => t.room);
+    const unassignedActive = tenants.filter(t => t.status === 'Active' && !t.room);
+    const assignedInactive = tenants.filter(t => t.status === 'Inactive' && t.room);
+
+    // Remove room assignment for inactive tenants
+    assignedInactive.forEach(t => { t.room = ''; });
+    // Assign available rooms to unassigned active tenants (round-robin)
+    const allRooms = await Room.find({});
+    let roomIdx = 0;
+    for (const t of unassignedActive) {
+      // Find next room with vacancy
+      let found = false;
+      for (let i = 0; i < allRooms.length; i++) {
+        const r = allRooms[(roomIdx + i) % allRooms.length];
+        const assignedCount = tenants.filter(tt => tt.room === r.name && tt.status === 'Active').length;
+        if (assignedCount < r.occupancy.max) {
+          t.room = r.name;
+          roomIdx = (roomIdx + i + 1) % allRooms.length;
+          found = true;
+          break;
+        }
+      }
+      if (!found) t.room = ''; // If no vacancy, leave unassigned
+    }
+    // Enforce move out date logic:
+    const today = new Date().toISOString().slice(0, 10);
+    for (const t of tenants) {
+      if (t.status === 'Inactive') {
+        // If no moveOutDate, set to today
+        if (!t.moveOutDate) t.moveOutDate = today;
+      } else {
+        // If active, moveOutDate must be empty
+        t.moveOutDate = '';
+      }
+    }
     await Tenant.insertMany(tenants);
     // For each room, count tenants assigned and update occupancy.current
     const roomNames = [...new Set(tenants.map(t => t.room).filter(Boolean))];

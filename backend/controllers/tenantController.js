@@ -12,15 +12,15 @@ exports.getTenants = async (req, res) => {
 
 exports.addTenant = async (req, res) => {
   try {
-    const { name, contact, email, room, status } = req.body;
+    const { name, contact, email, room, status, moveInDate, moveOutDate, accommodationType, bookingHistory, rentPaidStatus, rentDueDate, rentPaymentDate } = req.body;
     if (!name || !contact || !email) {
       return res.status(400).json({ error: 'Name, contact, and email are required' });
     }
-    const existing = await Tenant.findOne({ email });
+    const existing = await Tenant.findOne({ contact });
     if (existing) {
-      return res.status(400).json({ error: 'A tenant with this email already exists' });
+      return res.status(400).json({ error: 'A tenant with this contact number already exists' });
     }
-    const tenant = await Tenant.create({ name, contact, email, room, status });
+    const tenant = await Tenant.create({ name, contact, email, room, status, moveInDate, moveOutDate, accommodationType, bookingHistory, rentPaidStatus, rentDueDate, rentPaymentDate });
     // If assigned to a room, increment occupancy
     if (room) {
       await Room.findOneAndUpdate(
@@ -42,11 +42,15 @@ exports.updateTenant = async (req, res) => {
     if (!oldTenant) {
       return res.status(404).json({ error: 'Tenant not found' });
     }
-    if (updates.email) {
-      const existing = await Tenant.findOne({ email: updates.email, _id: { $ne: id } });
+    if (updates.contact) {
+      const existing = await Tenant.findOne({ contact: updates.contact, _id: { $ne: id } });
       if (existing) {
-        return res.status(400).json({ error: 'A tenant with this email already exists' });
+        return res.status(400).json({ error: 'A tenant with this contact number already exists' });
       }
+    }
+    // If status is set to Inactive, set moveOutDate to now if not already set
+    if (updates.status === 'Inactive' && !oldTenant.moveOutDate) {
+      updates.moveOutDate = new Date();
     }
     // If room assignment changed, update occupancy for both old and new rooms
     if (typeof updates.room !== 'undefined' && updates.room !== oldTenant.room) {
@@ -62,6 +66,11 @@ exports.updateTenant = async (req, res) => {
           { $inc: { 'occupancy.current': 1 } }
         );
       }
+    }
+    // If accommodationType is daily and bookingHistory is provided, add booking entry
+    if (updates.accommodationType === 'daily' && updates.bookingHistory) {
+      await Tenant.findByIdAndUpdate(id, { $push: { bookingHistory: { $each: updates.bookingHistory } } });
+      delete updates.bookingHistory;
     }
     const updatedTenant = await Tenant.findByIdAndUpdate(id, updates, { new: true });
     res.status(200).json(updatedTenant);

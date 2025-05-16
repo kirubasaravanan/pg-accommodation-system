@@ -3,6 +3,9 @@ import axios from 'axios';
 import { login, addRoom, updateRoom, deleteRoom, addUser } from './api';
 import AddUserForm from './components/AddUserForm';
 import AdminDashboard from './pages/AdminDashboard';
+import RentDetails from './pages/RentDetails';
+import TariffDetails from './pages/TariffDetails';
+import Reports from './pages/Reports';
 import './App.css';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 
@@ -90,6 +93,9 @@ function App() {
           }
         />
         <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/rent" element={<RentDetails />} />
+        <Route path="/tariffs" element={<TariffDetails />} />
+        <Route path="/reports" element={<Reports />} />
       </Routes>
     </Router>
   );
