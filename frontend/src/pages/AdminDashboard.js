@@ -441,15 +441,18 @@ const AdminDashboard = () => {
               </tr>
             </thead>
             <tbody>
-              {/* Unoccupied rooms row */}
+              {/* Unoccupied rooms row, ordered by type */}
               <tr style={{ background: '#f9fbe7' }}>
                 <td colSpan={9} style={{ textAlign: 'left', fontWeight: 500, color: '#666' }}>
                   Unoccupied Rooms:&nbsp;
-                  {rooms.filter(room => getTenantsForRoom(room.name).length === 0).map(room => (
-                    <span key={room._id} style={{ marginRight: 16 }}>
-                      <span style={{ color: '#1976d2' }}>{room.name}</span> <span style={{ fontSize: 13, color: '#888' }}>({room.type})</span>
-                    </span>
-                  ))}
+                  {rooms
+                    .filter(room => getTenantsForRoom(room.name).length === 0)
+                    .sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name))
+                    .map(room => (
+                      <span key={room._id} style={{ marginRight: 16 }}>
+                        <span style={{ color: '#1976d2' }}>{room.name}</span> <span style={{ fontSize: 13, color: '#888' }}>({room.type})</span>
+                      </span>
+                    ))}
                 </td>
               </tr>
               {filteredRooms.map((room) => {
@@ -521,10 +524,15 @@ const AdminDashboard = () => {
             <input name="contact" placeholder="Contact Number" value={tenantForm.contact} onChange={handleTenantFormChange} required />
             <input name="email" placeholder="Email (kept in DB)" value={tenantForm.email} onChange={handleTenantFormChange} required style={{ display: 'none' }} />
             <select name="room" value={tenantForm.room} onChange={handleTenantFormChange}>
-              <option value="">Select Room (optional)</option>
-              {getAvailableRooms().map(room => (
-                <option key={room._id} value={room.name}>{room.name} ({room.type}, {room.location}) - {room.occupancy.max - room.occupancy.current} vacancy</option>
-              ))}
+              <option value="">Select Room</option>
+              {rooms
+                .sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name))
+                .filter(room => room.occupancy.current < room.occupancy.max)
+                .map(room => (
+                  <option key={room._id} value={room.name}>
+                    {room.name} ({room.type}, {room.location}) - {room.occupancy.max - room.occupancy.current} vacancy
+                  </option>
+                ))}
             </select>
             <select name="status" value={tenantForm.status} onChange={handleTenantFormChange}>
               <option value="Active">Active</option>
