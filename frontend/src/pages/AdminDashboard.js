@@ -1,51 +1,84 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect } from 'react';
+import './AdminDashboard.css';
 
-function AdminDashboard() {
+const AdminDashboard = () => {
   const [rooms, setRooms] = useState([]);
-  const [bookings, setBookings] = useState([]);
 
   useEffect(() => {
-    const token = localStorage.getItem('token'); // Retrieve token from localStorage
-
-    axios.get('http://localhost:5000/api/rooms')
+    fetch('/api/rooms')
       .then((response) => {
-        console.log('Rooms fetched in AdminDashboard:', response.data); // Debug log
-        setRooms(response.data);
+        if (!response.ok) {
+          throw new Error('Failed to fetch rooms');
+        }
+        return response.json();
+      })
+      .then((data) => {
+        console.log('Fetched rooms:', data); // Debug log
+        setRooms(data);
       })
       .catch((error) => console.error('Error fetching rooms:', error));
-
-    axios.get('http://localhost:5000/api/bookings', {
-      headers: { Authorization: token },
-    })
-      .then((response) => setBookings(response.data))
-      .catch((error) => console.error('Error fetching bookings:', error));
   }, []);
 
-  console.log('AdminDashboard component rendered'); // Debug log
+  const handleUpdate = (roomId, updatedData) => {
+    console.log('Updating room:', roomId, 'with data:', updatedData);
+
+    fetch(`/api/rooms/${roomId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedData),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('Failed to update room');
+        }
+        return response.json();
+      })
+      .then((data) => {
+        console.log('Room updated successfully:', data);
+        setRooms((prevRooms) =>
+          prevRooms.map((room) => (room._id === roomId ? { ...room, ...updatedData } : room))
+        );
+      })
+      .catch((error) => console.error('Error updating room:', error));
+  };
 
   return (
-    <div>
+    <div className="admin-dashboard">
       <h1>Admin Dashboard</h1>
-      <h2>Rooms</h2>
-      <ul>
-        {rooms.map((room) => (
-          <li key={room._id}>
-            {room.name} - {room.location} - ${room.price}
-          </li>
-        ))}
-      </ul>
-
-      <h2>Bookings</h2>
-      <ul>
-        {bookings.map((booking) => (
-          <li key={booking._id}>
-            Room: {booking.room.name}, User: {booking.user.name}, Status: {booking.status}
-          </li>
-        ))}
-      </ul>
+      <table className="room-table">
+        <thead>
+          <tr>
+            <th>Room Name</th>
+            <th>Location</th>
+            <th>Price</th>
+            <th>Type</th>
+            <th>Max Occupancy</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rooms.map((room) => (
+            <tr key={room._id}>
+              <td>{room.name}</td>
+              <td>{room.location}</td>
+              <td>${room.price}</td>
+              <td>{room.type || 'N/A'}</td>
+              <td>{room.occupancy.max || 'N/A'}</td>
+              <td>
+                <button
+                  onClick={() =>
+                    handleUpdate(room._id, { blocked: !room.blocked })
+                  }
+                >
+                  {room.blocked ? 'Unblock' : 'Block'}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
-}
+};
 
 export default AdminDashboard;
