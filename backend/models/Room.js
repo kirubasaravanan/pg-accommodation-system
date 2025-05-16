@@ -4,7 +4,7 @@ const RoomSchema = new mongoose.Schema({
   name: { type: String, required: true },
   location: { type: String, required: true },
   price: { type: Number, required: true },
-  type: { type: String, enum: ['2 Sharing', '3Sharing', '5sharing', '3/4sharing', '1/2sharing', 'Private'], required: true },
+  type: { type: String, enum: ['Private Mini', 'Private', 'Double Occupancy', 'Triple Occupancy', 'Four Occupancy', 'Five Occupancy'], required: true },
   occupancy: {
     current: { type: Number, default: 0 },
     max: { type: Number, required: true },
