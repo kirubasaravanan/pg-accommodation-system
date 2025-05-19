@@ -118,15 +118,21 @@ const AdminDashboard = () => {
   const token = localStorage.getItem('token') || 'admin-token';
   const handleUpdateRoom = (e) => {
     e.preventDefault();
+    // Only send allowed fields
     const { _id, id, ...roomData } = roomForm;
-    axios.put(`http://localhost:5000/api/rooms/${editingRoomId}`, {
-      ...roomData,
-      price: Number(roomForm.price),
+    const payload = {
+      name: roomData.name,
+      location: roomData.location,
+      price: Number(roomData.price),
+      type: roomData.type,
       occupancy: {
-        current: getTenantsForRoom(roomForm.name).length, // always sync with actual tenants
-        max: Number(roomForm.occupancy.max),
+        current: getTenantsForRoom(roomData.name).length,
+        max: Number(roomData.occupancy.max),
       },
-    }, {
+      isBooked: roomData.isBooked || false,
+      blocked: roomData.blocked || false,
+    };
+    axios.put(`http://localhost:5000/api/rooms/${editingRoomId}`, payload, {
       headers: { Authorization: token },
     })
       .then((response) => {
@@ -322,14 +328,21 @@ const AdminDashboard = () => {
 
   // Add handleSaveRoomInline
   const handleSaveRoomInline = (roomId) => {
-    axios.put(`http://localhost:5000/api/rooms/${roomId}`, {
-      ...editingRoomForm,
-      price: Number(editingRoomForm.price),
+    // Only send allowed fields
+    const { _id, id, ...roomData } = editingRoomForm;
+    const payload = {
+      name: roomData.name,
+      location: roomData.location,
+      price: Number(roomData.price),
+      type: roomData.type,
       occupancy: {
-        current: getTenantsForRoom(editingRoomForm.name).length,
-        max: Number(editingRoomForm.occupancy.max),
+        current: getTenantsForRoom(roomData.name).length,
+        max: Number(roomData.occupancy.max),
       },
-    }, {
+      isBooked: roomData.isBooked || false,
+      blocked: roomData.blocked || false,
+    };
+    axios.put(`http://localhost:5000/api/rooms/${roomId}`, payload, {
       headers: { Authorization: token },
     })
       .then((response) => {
@@ -390,6 +403,10 @@ const AdminDashboard = () => {
       </div>
       {activeTab === 'rooms' && (
         <>
+          {/* Only show unoccupied rooms summary here, remove from other places */}
+          <div style={{ background: '#f9fbe7', padding: '8px 12px', marginBottom: 8, fontWeight: 500, color: '#666', borderRadius: 4 }}>
+            Unoccupied Rooms: <span style={{ color: '#1976d2' }}>(Five Occupancy)</span> - 1D, 2D, 3D <span style={{ color: '#1976d2', marginLeft: 12 }}>(Four Occupancy)</span> - 1E, 2A, 2E, 3A, 3E <span style={{ color: '#1976d2', marginLeft: 12 }}>(Private)</span> - 1B, 1C, 1F, 1G, 1H, 2C, 2F, 2G, 2H, 3B, 3C, 3F, 3G, 3H <span style={{ color: '#1976d2', marginLeft: 12 }}>(Private Mini)</span> - 1I, 2I, 3I
+          </div>
           <form onSubmit={editingRoomId ? handleUpdateRoom : handleAddRoom} style={{ marginBottom: 20 }}>
             <input name="name" placeholder="Room Name" value={roomForm.name} onChange={handleRoomFormChange} required />
             <input name="location" placeholder="Location" value={roomForm.location} onChange={handleRoomFormChange} required />
@@ -428,6 +445,10 @@ const AdminDashboard = () => {
                   Total Rooms: {totalRooms} | Occupied: {totalOccupied} | Vacant: {totalVacant}
                 </td>
               </tr>
+            </thead>
+          </table>
+          <table className="room-table">
+            <thead>
               <tr>
                 <th>Room Name</th>
                 <th>Type</th>
@@ -441,20 +462,6 @@ const AdminDashboard = () => {
               </tr>
             </thead>
             <tbody>
-              {/* Unoccupied rooms row, ordered by type */}
-              <tr style={{ background: '#f9fbe7' }}>
-                <td colSpan={9} style={{ textAlign: 'left', fontWeight: 500, color: '#666' }}>
-                  Unoccupied Rooms:&nbsp;
-                  {rooms
-                    .filter(room => getTenantsForRoom(room.name).length === 0)
-                    .sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name))
-                    .map(room => (
-                      <span key={room._id} style={{ marginRight: 16 }}>
-                        <span style={{ color: '#1976d2' }}>{room.name}</span> <span style={{ fontSize: 13, color: '#888' }}>({room.type})</span>
-                      </span>
-                    ))}
-                </td>
-              </tr>
               {filteredRooms.map((room) => {
                 const tenantsInRoom = getTenantsForRoom(room.name);
                 const vacant = room.occupancy.max - tenantsInRoom.length;
@@ -704,8 +711,8 @@ const AdminDashboard = () => {
                           <td>{b.startDate ? b.startDate.slice(0,10) : ''}</td>
                           <td>{b.endDate ? b.endDate.slice(0,10) : ''}</td>
                           <td>{b.accommodationType || '-'}</td>
-                          <td>{b.customRent ? (<span title="Custom Rent (Concession)">₹{b.customRent} <span style={{ background: '#ffe082', color: '#333', borderRadius: 4, padding: '2px 6px', fontSize: 12, marginLeft: 4 }}>Concession</span></span>) : (`₹${b.rentAmount || b.amount || '-'}`)}</td>
-                          <td>{b.rentPaidStatus}</td>
+                          <td>{b.customRent ? (<span style={{ color: b.rentPaidStatus === 'paid' ? 'green' : 'red' }}>₹{b.customRent}</span>) : '-'}</td>
+                          <td>{b.rentPaidStatus.charAt(0).toUpperCase() + b.rentPaidStatus.slice(1)}</td>
                           <td>{b.rentDueDate ? b.rentDueDate.slice(0,10) : '-'}</td>
                           <td>{b.rentPaymentDate ? b.rentPaymentDate.slice(0,10) : '-'}</td>
                           <td>{b.securityDeposit ? `₹${b.securityDeposit}` : '-'}</td>
@@ -720,9 +727,7 @@ const AdminDashboard = () => {
           )}
         </>
       )}
-      {activeTab === 'rent' && (
-        <RentSecurityTab />
-      )}
+      {activeTab === 'rent' && <RentSecurityTab />}
     </div>
   );
 };

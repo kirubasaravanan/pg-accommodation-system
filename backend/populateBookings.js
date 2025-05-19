@@ -14,91 +14,68 @@ async function main() {
   const tenants = await Tenant.find();
   const rooms = await Room.find();
 
-  // Calculate 70% occupancy
+  // Calculate 90% occupancy
   const totalBeds = rooms.reduce((sum, r) => sum + (r.occupancy?.max || 1), 0);
-  const targetOccupied = Math.floor(totalBeds * 0.7);
-  let occupied = 0;
+  const occupancyRate = 0.9;
+  const months = 6;
+  const today = new Date();
   let bookings = [];
-  let tenantIdx = 0;
 
-  // Assign tenants to rooms for 70% occupancy
-  for (const room of rooms) {
-    let beds = room.occupancy?.max || 1;
-    let fill = Math.min(beds, targetOccupied - occupied);
-    for (let i = 0; i < fill && tenantIdx < tenants.length; i++) {
-      const tenant = tenants[tenantIdx++];
-      // Monthly booking
-      bookings.push({
-        tenant: tenant._id,
-        room: room.name,
-        startDate: new Date('2025-05-01'),
-        endDate: new Date('2025-05-31'),
-        accommodationType: 'monthly',
-        rentAmount: room.price,
-        rentPaidStatus: i % 3 === 0 ? 'paid' : (i % 3 === 1 ? 'due' : 'partial'),
-        rentDueDate: new Date('2025-05-10'),
-        rentPaymentDate: i % 3 === 0 ? new Date('2025-05-05') : null,
-        securityDeposit: 2000 + (i * 500),
-        notes: i % 2 === 0 ? 'Regular' : 'Late payment',
-      });
-      occupied++;
-    }
-    if (occupied >= targetOccupied) break;
+  // Prepare monthly periods (last 6 months)
+  let periods = [];
+  for (let m = months - 1; m >= 0; m--) {
+    let start = new Date(today.getFullYear(), today.getMonth() - m, 1);
+    let end = new Date(today.getFullYear(), today.getMonth() - m + 1, 0);
+    periods.push({ start, end });
   }
 
-  // Generate bookings for 3 months (May, April, March 2025) and 30%+ occupancy
-  const months = [
-    { start: '2025-05-01', end: '2025-05-31' },
-    { start: '2025-04-01', end: '2025-04-30' },
-    { start: '2025-03-01', end: '2025-03-31' },
-  ];
-  const minOccupancy = Math.ceil(totalBeds * 0.3);
-  let bookingCount = 0;
-  let tIdx = 0;
-  // For each month, assign tenants to rooms for at least 30% occupancy
-  for (const month of months) {
+  // Assign bookings for each month
+  let tenantIdx = 0;
+  for (let p = 0; p < periods.length; p++) {
+    const { start, end } = periods[p];
     let monthOccupied = 0;
+    const targetOccupied = Math.floor(totalBeds * occupancyRate);
+    // Get eligible tenants for this month (moveIn <= end, (moveOut >= start or active))
+    const eligibleTenants = tenants.filter(t => {
+      const moveIn = new Date(t.moveInDate);
+      const moveOut = t.moveOutDate ? new Date(t.moveOutDate) : null;
+      return moveIn <= end && (!moveOut || moveOut >= start);
+    });
+    let usedTenantIds = new Set();
+    let roomIdx = 0;
     for (const room of rooms) {
       let beds = room.occupancy?.max || 1;
-      let fill = Math.min(beds, minOccupancy - monthOccupied);
-      for (let i = 0; i < fill && tIdx < tenants.length; i++) {
-        const tenant = tenants[tIdx++];
+      for (let b = 0; b < beds && monthOccupied < targetOccupied; b++) {
+        // Find next eligible tenant not used for this month
+        let tenant = null;
+        for (let tIdx = 0; tIdx < eligibleTenants.length; tIdx++) {
+          if (!usedTenantIds.has(eligibleTenants[tIdx]._id.toString())) {
+            tenant = eligibleTenants[tIdx];
+            usedTenantIds.add(tenant._id.toString());
+            break;
+          }
+        }
+        if (!tenant) break;
+        // Booking duration: match tenant type
+        let bookingStart = new Date(Math.max(start, new Date(tenant.moveInDate)));
+        let bookingEnd = tenant.moveOutDate ? new Date(Math.min(end, new Date(tenant.moveOutDate))) : end;
         bookings.push({
           tenant: tenant._id,
           room: room.name,
-          startDate: new Date(month.start),
-          endDate: new Date(month.end),
-          accommodationType: 'monthly',
+          startDate: bookingStart,
+          endDate: bookingEnd,
+          accommodationType: tenant.accommodationType,
           rentAmount: room.price,
-          rentPaidStatus: i % 3 === 0 ? 'paid' : (i % 3 === 1 ? 'due' : 'partial'),
-          rentDueDate: new Date(month.start),
-          rentPaymentDate: i % 3 === 0 ? new Date(month.start) : null,
-          securityDeposit: 2000 + (i * 500),
-          notes: i % 2 === 0 ? 'Regular' : 'Late payment',
+          rentPaidStatus: b % 3 === 0 ? 'paid' : (b % 3 === 1 ? 'due' : 'partial'),
+          rentDueDate: new Date(bookingStart),
+          rentPaymentDate: b % 3 === 0 ? new Date(bookingStart) : null,
+          securityDeposit: 2000 + (b * 500),
+          notes: b % 2 === 0 ? 'Regular' : 'Late payment',
         });
         monthOccupied++;
-        bookingCount++;
       }
-      if (monthOccupied >= minOccupancy) break;
+      if (monthOccupied >= targetOccupied) break;
     }
-  }
-  // Add some daily/weekly bookings for remaining tenants (May only)
-  for (; tIdx < tenants.length; tIdx++) {
-    const tenant = tenants[tIdx];
-    bookings.push({
-      tenant: tenant._id,
-      room: rooms[tIdx % rooms.length].name,
-      startDate: new Date('2025-05-10'),
-      endDate: new Date('2025-05-15'),
-      accommodationType: 'daily',
-      rentAmount: 500,
-      rentPaidStatus: 'due',
-      rentDueDate: new Date('2025-05-12'),
-      rentPaymentDate: null,
-      securityDeposit: 1000,
-      notes: 'Short stay',
-    });
-    bookingCount++;
   }
 
   await Booking.insertMany(bookings);
