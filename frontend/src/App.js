@@ -13,6 +13,7 @@ import Login from './components/Login';
 import { UserProvider } from './context/UserContext';
 import ComingSoon from './pages/ComingSoon';
 import UserManagement from './pages/UserManagement';
+import MainLayout from './components/MainLayout';
 
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem('token'));
@@ -30,27 +31,161 @@ function App() {
     <UserProvider>
       <Router>
         <Routes>
+          {/* Public routes */}
           <Route
             path="/"
             element={
               token ? <Navigate to="/dashboard" /> : <Login onLogin={handleLogin} />
             }
           />
+          <Route path="/register" element={<RegistrationForm />} />
+
+          {/* Protected routes under MainLayout */}
           <Route
             path="/dashboard"
             element={
-              token ? <Dashboard onLogout={handleLogout} /> : <Navigate to="/" />
+              token ? (
+                <MainLayout>
+                  <Dashboard onLogout={handleLogout} />
+                </MainLayout>
+              ) : (
+                <Navigate to="/" />
+              )
             }
           />
-          {/* Add routes for each admin module */}
-          <Route path="/settings/admin-console/users" element={<UserManagement />} />
-          <Route path="/settings/admin-console/rooms" element={<ComingSoon title="Room Configuration" />} />
-          <Route path="/settings/admin-console/rent-setup" element={<ComingSoon title="Rent Setup" />} />
-          <Route path="/settings/admin-console/discounts" element={<ComingSoon title="Discounts & Offers" />} />
-          <Route path="/settings/admin-console/roles" element={<ComingSoon title="Permissions/Roles Setup" />} />
-          <Route path="/settings/admin-console/policies" element={<ComingSoon title="Policy & Notice Board" />} />
-          <Route path="/settings/admin-console/integrations" element={<ComingSoon title="Integrations Setup" />} />
-          <Route path="/settings/admin-console/backup" element={<ComingSoon title="Backup & Restore" />} />
+          <Route
+            path="/tariff-details"
+            element={
+              token ? (
+                <MainLayout>
+                  <TariffDetails />
+                </MainLayout>
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              token ? (
+                <MainLayout>
+                  <Reports />
+                </MainLayout>
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
+          <Route
+            path="/rent-details"
+            element={
+              token ? (
+                <MainLayout>
+                  <RentDetails />
+                </MainLayout>
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
+          {/* Settings routes */}
+          <Route
+            path="/settings/admin-console/users"
+            element={
+              token ? (
+                <MainLayout>
+                  <UserManagement />
+                </MainLayout>
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
+          <Route
+            path="/settings/admin-console/rooms"
+            element={
+              token ? (
+                <MainLayout>
+                  <ComingSoon title="Room Configuration" />
+                </MainLayout>
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
+          <Route
+            path="/settings/admin-console/rent-setup"
+            element={
+              token ? (
+                <MainLayout>
+                  <ComingSoon title="Rent Setup" />
+                </MainLayout>
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
+          <Route
+            path="/settings/admin-console/discounts"
+            element={
+              token ? (
+                <MainLayout>
+                  <ComingSoon title="Discounts & Offers" />
+                </MainLayout>
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
+          <Route
+            path="/settings/admin-console/roles"
+            element={
+              token ? (
+                <MainLayout>
+                  <ComingSoon title="Permissions/Roles Setup" />
+                </MainLayout>
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
+          <Route
+            path="/settings/admin-console/policies"
+            element={
+              token ? (
+                <MainLayout>
+                  <ComingSoon title="Policy & Notice Board" />
+                </MainLayout>
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
+          <Route
+            path="/settings/admin-console/integrations"
+            element={
+              token ? (
+                <MainLayout>
+                  <ComingSoon title="Integrations Setup" />
+                </MainLayout>
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
+          <Route
+            path="/settings/admin-console/backup"
+            element={
+              token ? (
+                <MainLayout>
+                  <ComingSoon title="Backup & Restore" />
+                </MainLayout>
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
         </Routes>
       </Router>
     </UserProvider>

@@ -71,3 +71,52 @@ exports.getRoomById = async (req, res) => {
     res.status(400).json({ error: error.message });
   }
 };
+
+// Get available rooms by type
+exports.getAvailableRooms = async (req, res) => {
+  try {
+    const { type } = req.query;
+    if (!type) {
+      return res.status(400).json({ status: 'error', message: 'Room type is required.' });
+    }
+    // Only return rooms where occupancy.current < occupancy.max, not blocked, not fully booked
+    const availableRooms = await Room.find({
+      type,
+      blocked: false,
+      $expr: { $lt: ["$occupancy.current", "$occupancy.max"] }
+    });
+    res.status(200).json({ status: 'success', data: availableRooms });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+};
+
+// Get distinct available room types
+exports.getAvailableRoomTypes = async (req, res) => {
+  try {
+    const availableRoomObjects = await Room.aggregate([
+      {
+        $match: {
+          blocked: false,
+          $expr: { $lt: ["$occupancy.current", "$occupancy.max"] }
+        }
+      },
+      {
+        $group: {
+          _id: "$type" // Group by type
+        }
+      },
+      {
+        $project: {
+          _id: 0, // Exclude the default _id field from group
+          type: "$_id" // Rename _id to type
+        }
+      }
+    ]);
+    const availableTypes = availableRoomObjects.map(rt => rt.type);
+    res.status(200).json({ status: 'success', data: availableTypes });
+  } catch (error) {
+    console.error('Error fetching available room types:', error);
+    res.status(500).json({ status: 'error', message: 'Failed to fetch available room types: ' + error.message });
+  }
+};

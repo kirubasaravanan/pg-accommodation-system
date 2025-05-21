@@ -42,11 +42,32 @@ const AdminDashboard = () => {
   const [rooms, setRooms] = useState([]);
   const [activeTab, setActiveTab] = useState('rooms');
   const [tenants, setTenants] = useState([]);
-  const [tenantForm, setTenantForm] = useState({ id: null, name: '', contact: '', email: '', room: '', status: 'Active', moveInDate: '', moveOutDate: '', accommodationType: 'monthly', rentPaidStatus: 'due', rentDueDate: '', rentPaymentDate: '', bookingHistory: [], customRent: '' });
+  const [tenantForm, setTenantForm] = useState({
+    id: null,
+    name: '',
+    contact: '',
+    email: '',
+    aadhaar: '', // Added
+    preferredRoomType: '', // Added for registration room preference
+    emergencyContact: '', // Added
+    remarks: '', // Added
+    room: '',
+    status: 'Active',
+    moveInDate: '',
+    moveOutDate: '',
+    accommodationType: 'monthly',
+    rentPaidStatus: 'due',
+    rentDueDate: '',
+    rentPaymentDate: '',
+    bookingHistory: [],
+    customRent: '',
+    securityDeposit: { amount: 0, refundableType: 'fully', conditions: '' } // Added securityDeposit
+  });
   const [editingTenantId, setEditingTenantId] = useState(null);
   const [roomForm, setRoomForm] = useState({ name: '', location: '', price: '', type: '', occupancy: { current: 0, max: '' } });
   const [editingRoomId, setEditingRoomId] = useState(null);
   const [error, setError] = useState('');
+  const [roomError, setRoomError] = useState('');
 
   // New state for assignment dropdown per room
   const [assignTenantState, setAssignTenantState] = useState({}); // { [roomName]: tenantId }
@@ -69,6 +90,13 @@ const AdminDashboard = () => {
   const [showTariffPage, setShowTariffPage] = useState(false);
   const [showAddRoomTypeModal, setShowAddRoomTypeModal] = useState(false);
 
+  // Add state for admin registration flow
+  const [newTenantId, setNewTenantId] = useState('');
+  const [showRoomSelect, setShowRoomSelect] = useState(false);
+  const [availableRooms, setAvailableRooms] = useState([]);
+  const [selectedRoom, setSelectedRoom] = useState('');
+  const [registrationSuccess, setRegistrationSuccess] = useState('');
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -79,6 +107,15 @@ const AdminDashboard = () => {
       .then((response) => setTenants(response.data))
       .catch(() => setTenants([]));
   }, []);
+
+  // Fetch tenants when switching to tenants tab
+  useEffect(() => {
+    if (activeTab === 'tenants') {
+      axios.get('http://localhost:5000/api/tenants')
+        .then((response) => setTenants(response.data))
+        .catch(() => setTenants([]));
+    }
+  }, [activeTab]);
 
   // Room handlers
   const handleRoomFormChange = (e) => {
@@ -160,27 +197,126 @@ const AdminDashboard = () => {
   };
 
   // Tenant handlers
-  const handleAddTenant = (e) => {
+  const handleAddTenant = async (e) => {
     e.preventDefault();
-    if (tenants.some(t => t.email === tenantForm.email)) {
-      setError('A tenant with this email already exists.');
+    setError('');
+    setRoomError('');
+    setRegistrationSuccess('');
+    setShowRoomSelect(false);
+    setAvailableRooms([]);
+    setSelectedRoom('');
+    setNewTenantId('');
+
+    if (tenants.some(t => t.contact === tenantForm.contact)) {
+      setError('A tenant with this contact number already exists.');
       return;
     }
-    axios.post('http://localhost:5000/api/tenants', tenantForm)
-      .then((response) => {
-        setTenants([...tenants, response.data]);
-        setTenantForm({ id: null, name: '', contact: '', email: '', room: '', status: 'Active', moveInDate: '', moveOutDate: '', accommodationType: 'monthly', rentPaidStatus: 'due', rentDueDate: '', rentPaymentDate: '', bookingHistory: [], customRent: '' });
-        setError('');
-      })
-      .catch(() => setError('Failed to add tenant.'));
+
+    // Log the current state of tenantForm for debugging
+    console.log('Current tenantForm state (frontend):', tenantForm);
+
+    const payload = {
+      name: tenantForm.name,
+      contact: tenantForm.contact, // Or mobile, backend handles both
+      email: tenantForm.email || '',
+      aadhaar: tenantForm.aadhaar || '',
+      joiningDate: tenantForm.moveInDate ? tenantForm.moveInDate : new Date().toISOString().slice(0, 10),
+      roomType: tenantForm.preferredRoomType || tenantForm.roomType || tenantForm.type || '', // Use preferredRoomType
+      emergencyContact: tenantForm.emergencyContact || '',
+      remarks: tenantForm.remarks || '',
+    };
+    console.log('Register tenant payload (frontend):', payload); // For frontend debugging
+
+    try {
+      const res = await axios.post('http://localhost:5000/api/tenants/register', payload);
+      console.log('Registration response (frontend):', res.data);
+
+      if (!res.data || res.data.status !== 'success') {
+        setError(res.data?.message || 'Registration failed.');
+        return;
+      }
+      const newId = res.data?.data?.tenantId;
+      if (!newId) {
+        setError('Registration failed: No tenant ID returned. Please contact admin.');
+        return;
+      }
+      setNewTenantId(newId);
+      setRegistrationSuccess('Registration complete!');
+
+      try {
+        // Use the roomType from the payload for fetching available rooms
+        const roomsRes = await axios.get(`http://localhost:5000/api/rooms/available?type=${payload.roomType}`);
+        console.log('Available rooms response (frontend):', roomsRes.data);
+        setAvailableRooms(roomsRes.data.data);
+        setShowRoomSelect(true);
+        if (!roomsRes.data.data || roomsRes.data.data.length === 0) {
+          setRoomError('No rooms available for this type. Please allocate a room later.');
+        }
+      } catch (roomErr) {
+        setAvailableRooms([]);
+        setShowRoomSelect(false);
+        setRoomError('No rooms available for this type. Please allocate a room later.');
+      }
+    } catch (err) {
+      console.error('Registration error (frontend):', err.response?.data || err);
+      const backendMsg = err.response?.data?.message || err.response?.data?.error || err.response?.data?.status || err.message;
+      setError(backendMsg || 'Registration failed.');
+    }
   };
+
+  // Admin room allocation after registration
+  const handleAdminAllocateRoom = async () => {
+    setError('');
+    setRegistrationSuccess('');
+    if (!selectedRoom) {
+      setError('Please select a room number.');
+      return;
+    }
+    try {
+      await axios.post('http://localhost:5000/api/tenants/allocate-room', {
+        tenantId: newTenantId,
+        roomNumber: selectedRoom,
+        startDate: new Date().toISOString().slice(0, 10),
+        rent: availableRooms.find(r => r.name === selectedRoom)?.price || 0,
+      });
+      setRegistrationSuccess('Room allocated successfully!');
+      setShowRoomSelect(false);
+      setSelectedRoom('');
+      setNewTenantId('');
+      // Refresh tenants list
+      const tenantsRes = await axios.get('http://localhost:5000/api/tenants');
+      setTenants(tenantsRes.data);
+      setTenantForm({ // Reset with new fields
+        id: null, name: '', contact: '', email: '', aadhaar: '', preferredRoomType: '', emergencyContact: '', remarks: '',
+        room: '', status: 'Active', moveInDate: '', moveOutDate: '', accommodationType: 'monthly',
+        rentPaidStatus: 'due', rentDueDate: '', rentPaymentDate: '', bookingHistory: [], customRent: '',
+        securityDeposit: { amount: 0, refundableType: 'fully', conditions: '' } // Reset securityDeposit
+      });
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Room allocation failed.');
+    }
+  };
+
   const handleEditTenant = (tenant) => {
     setEditingTenantId(tenant._id);
-    setTenantForm({ ...tenant });
+    setTenantForm({
+        ...tenant,
+        aadhaar: tenant.aadhaar || '', // Ensure these fields are part of the form when editing
+        preferredRoomType: tenant.roomPreference || tenant.roomType || '',
+        emergencyContact: tenant.emergencyContact || '',
+        remarks: tenant.remarks || '',
+        securityDeposit: tenant.securityDeposit || { amount: 0, refundableType: 'fully', conditions: '' } // Ensure securityDeposit is part of the form
+    });
   };
   const handleCancelEditTenant = () => {
     setEditingTenantId(null);
-    setTenantForm({ id: null, name: '', contact: '', email: '', room: '', status: 'Active', moveInDate: '', moveOutDate: '', accommodationType: 'monthly', rentPaidStatus: 'due', rentDueDate: '', rentPaymentDate: '', bookingHistory: [], customRent: '' });
+    setTenantForm({ // Reset with new fields
+      id: null, name: '', contact: '', email: '', aadhaar: '', preferredRoomType: '', emergencyContact: '', remarks: '',
+      room: '', status: 'Active', moveInDate: '', moveOutDate: '', accommodationType: 'monthly',
+      rentPaidStatus: 'due', rentDueDate: '', rentPaymentDate: '', bookingHistory: [], customRent: '',
+      securityDeposit: { amount: 0, refundableType: 'fully', conditions: '' } // Reset securityDeposit
+    });
     setError('');
   };
   const handleUpdateTenant = (e) => {
@@ -196,7 +332,12 @@ const AdminDashboard = () => {
       .then((response) => {
         setTenants(tenants.map((t) => (t._id === editingTenantId ? response.data : t)));
         setEditingTenantId(null);
-        setTenantForm({ id: null, name: '', contact: '', email: '', room: '', status: 'Active', moveInDate: '', moveOutDate: '', accommodationType: 'monthly', rentPaidStatus: 'due', rentDueDate: '', rentPaymentDate: '', bookingHistory: [], customRent: '' });
+        setTenantForm({ // Reset with new fields
+          id: null, name: '', contact: '', email: '', aadhaar: '', preferredRoomType: '', emergencyContact: '', remarks: '',
+          room: '', status: 'Active', moveInDate: '', moveOutDate: '', accommodationType: 'monthly',
+          rentPaidStatus: 'due', rentDueDate: '', rentPaymentDate: '', bookingHistory: [], customRent: '',
+          securityDeposit: { amount: 0, refundableType: 'fully', conditions: '' } // Reset securityDeposit
+        });
         setError('');
       })
       .catch((err) => {
@@ -291,7 +432,18 @@ const AdminDashboard = () => {
   // Tenant form change handler (restore if missing)
   const handleTenantFormChange = (e) => {
     const { name, value } = e.target;
-    setTenantForm({ ...tenantForm, [name]: value });
+    if (name.startsWith('securityDeposit.')) {
+      const field = name.split('.')[1];
+      setTenantForm({
+        ...tenantForm,
+        securityDeposit: {
+          ...tenantForm.securityDeposit,
+          [field]: value,
+        },
+      });
+    } else {
+      setTenantForm({ ...tenantForm, [name]: value });
+    }
   };
 
   const handleAddBooking = () => {
@@ -401,6 +553,21 @@ const AdminDashboard = () => {
       <div className={styles['admin-dashboard']}>
         <h1>Admin Dashboard</h1>
         {error && <div style={{ color: 'red', marginBottom: 10 }}>{error}</div>}
+        {registrationSuccess && <div style={{ color: '#43a047', background: '#e8f5e9', borderRadius: 8, padding: '8px 16px', marginBottom: 8, fontWeight: 600 }}>{registrationSuccess}</div>}
+        {roomError && <div style={{ color: '#e53935', background: '#fff3f3', borderRadius: 8, padding: '8px 16px', marginBottom: 16, fontWeight: 600 }}>{roomError}</div>}
+        {showRoomSelect && (
+          <div style={{ background: '#fff', borderRadius: 8, padding: 16, marginBottom: 16, boxShadow: '0 2px 8px rgba(70,111,166,0.08)' }}>
+            <h3 style={{ color: '#466fa6', fontWeight: 700, marginBottom: 12 }}>Allocate Room</h3>
+            <select value={selectedRoom} onChange={e => setSelectedRoom(e.target.value)} style={{ width: '100%', padding: 10, borderRadius: 8, border: '1.5px solid #dbe6f6', fontSize: 16, marginBottom: 16 }}>
+              <option value="">Select room number</option>
+              {availableRooms.map(room => (
+                <option key={room._id} value={room.name}>{room.name} ({room.location}) - ₹{room.price} [{room.occupancy.max - room.occupancy.current} vacant]</option>
+              ))}
+            </select>
+            <button onClick={handleAdminAllocateRoom} style={{ background: '#43a047', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontWeight: 700, fontSize: 16, cursor: 'pointer', marginRight: 12 }}>Allocate Room</button>
+            <button onClick={() => { setShowRoomSelect(false); setSelectedRoom(''); setNewTenantId(''); }} style={{ background: '#eee', color: '#333', border: 'none', borderRadius: 8, padding: '10px 24px', fontWeight: 600, fontSize: 16, cursor: 'pointer' }}>Cancel</button>
+          </div>
+        )}
         <div style={{ marginBottom: 20 }}>
           <button
             onClick={() => setActiveTab('rooms')}
@@ -454,6 +621,7 @@ const AdminDashboard = () => {
         )}
         {activeTab === 'tenants' && (
           <TenantsTab
+            activeTab={activeTab}
             tenants={tenants}
             rooms={rooms}
             tenantForm={tenantForm}

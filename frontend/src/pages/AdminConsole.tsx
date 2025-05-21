@@ -6,6 +6,7 @@ import UserManagement from './UserManagement';
 import ComingSoon from './ComingSoon';
 import ChatbotWhatsAppIntegration from './ChatbotWhatsAppIntegration';
 import RoomConfigurationModal from '../components/RoomConfigurationModal';
+import RentSecurityTab from './RentSecurityTab';
 
 const MODULES = [
   {
@@ -70,6 +71,13 @@ const MODULES = [
     desc: 'View and manage tenant booking history',
     icon: <ClipboardList className="w-7 h-7 text-gray-700" />, 
     route: '/tenant-history',
+  },
+  {
+    key: 'rent-security',
+    title: 'Rent & Security',
+    desc: 'View rent forecasts and security deposits',
+    icon: <IndianRupee className="w-7 h-7 text-gray-700" />, 
+    route: '/rent-security',
   },
 ];
 
@@ -261,6 +269,9 @@ const AdminConsole = () => {
         <h2>Tenant History</h2>
         {/* Tenant history content here */}
       </div>
+    );
+    else if (openModule.key === 'rent-security') content = (
+      <RentSecurityTab onClose={() => setOpenModule(null)} />
     );
     else content = <ComingSoon title={openModule.title} />;
     return (

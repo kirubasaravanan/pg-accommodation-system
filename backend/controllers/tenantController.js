@@ -144,41 +144,6 @@ exports.allocateTenant = async (req, res) => {
   }
 };
 
-// Register a new tenant and assign a room if available
-exports.registerTenant = async (req, res) => {
-  try {
-    const { name, contact, aadhaar, email, accommodationType, preferredRoomType } = req.body;
-    if (!name || !contact || !aadhaar || !email || !accommodationType || !preferredRoomType) {
-      return res.status(400).json({ error: 'All fields are required.' });
-    }
-    // Check for existing tenant by contact or aadhaar
-    const existing = await Tenant.findOne({ $or: [{ contact }, { email }] });
-    if (existing) {
-      return res.status(400).json({ error: 'A tenant with this contact or email already exists.' });
-    }
-    // Find available room of preferred type
-    const room = await Room.findOne({ type: preferredRoomType, $expr: { $lt: ["$occupancy.current", "$occupancy.max"] } });
-    if (!room) {
-      return res.status(400).json({ error: 'No available room for selected type.' });
-    }
-    // Assign tenant to room
-    const tenant = await Tenant.create({
-      name,
-      contact,
-      aadhaar,
-      email,
-      room: room.name,
-      status: 'Active',
-      moveInDate: new Date(),
-      accommodationType,
-    });
-    await Room.findByIdAndUpdate(room._id, { $inc: { 'occupancy.current': 1 } });
-    res.status(201).json({ message: 'Registration successful', tenant });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
 exports.getTenantHistory = async (req, res) => {
   try {
     const { id } = req.params;
@@ -208,5 +173,114 @@ exports.updateSecurityDeposit = async (req, res) => {
     res.status(200).json({ message: 'Security deposit updated successfully', tenant });
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+};
+
+// POST /tenants/register (register only, no room assigned)
+exports.registerTenantV2 = async (req, res) => {
+  try {
+    console.log('registerTenantV2 called with body:', req.body);
+    // Accept both 'contact' and 'mobile' for compatibility
+    const contactValue = req.body.contact || req.body.mobile;
+    const { name, aadhaar, joiningDate, roomType, email } = req.body; // emergencyContact and remarks are optional here
+
+    let missingFields = [];
+    if (!name) missingFields.push('name');
+    if (!contactValue) missingFields.push('contact/mobile');
+    if (!aadhaar) missingFields.push('aadhaar');
+    if (!joiningDate) missingFields.push('joiningDate');
+    if (!roomType) missingFields.push('roomType');
+    if (!email) missingFields.push('email');
+
+    if (missingFields.length > 0) {
+      console.error('Missing required fields:', missingFields, 'Received body:', req.body);
+      return res.status(400).json({ status: 'error', message: `Missing required fields: ${missingFields.join(', ')}.` });
+    }
+
+    // Uniqueness check
+    const existing = await Tenant.findOne({ $or: [{ contact: contactValue }, { aadhaar }, { email }] });
+    if (existing) {
+      let duplicateFields = [];
+      if (existing.contact === contactValue) duplicateFields.push('contact/mobile');
+      if (existing.aadhaar === aadhaar) duplicateFields.push('aadhaar');
+      if (existing.email === email) duplicateFields.push('email');
+      return res.status(400).json({ status: 'error', message: `Already registered: ${duplicateFields.join(', ')}.` });
+    }
+    // Create tenant (room not assigned yet)
+    const tenant = await Tenant.create({
+      name,
+      contact: contactValue,
+      email,
+      aadhaar,
+      moveInDate: joiningDate,
+      accommodationType: 'monthly', // default, can be changed
+      roomPreference: roomType,
+      emergencyContact: req.body.emergencyContact, // Save if provided
+      remarks: req.body.remarks, // Save if provided
+      status: 'Active',
+    });
+    console.log('Tenant created (registerTenantV2):', tenant);
+    return res.status(201).json({ status: 'success', message: 'Tenant registered successfully.', data: { tenantId: tenant._id } });
+  } catch (error) {
+    console.error('registerTenantV2 error:', error);
+    return res.status(500).json({ status: 'error', message: error.message });
+  }
+};
+
+// POST /tenants/allocate-room (allocate a selected room to a tenant)
+exports.allocateRoomToTenant = async (req, res) => {
+  try {
+    const { tenantId, roomNumber, startDate, rent } = req.body;
+    if (!tenantId || !roomNumber || !startDate || !rent) {
+      return res.status(400).json({ status: 'error', message: 'Missing required fields.' });
+    }
+    // Find tenant
+    const tenant = await Tenant.findById(tenantId);
+    if (!tenant) {
+      return res.status(400).json({ status: 'error', message: 'Tenant ID invalid.' });
+    }
+    // Find room
+    const room = await Room.findOne({ name: roomNumber });
+    if (!room) {
+      return res.status(400).json({ status: 'error', message: 'Room not found.' });
+    }
+    // Check if room is available
+    if (room.occupancy.current >= room.occupancy.max || room.isBooked || room.blocked) {
+      return res.status(400).json({ status: 'error', message: 'Room already occupied.' });
+    }
+    // Update room occupancy and status
+    room.occupancy.current += 1;
+    if (room.occupancy.current >= room.occupancy.max) {
+      room.isBooked = true;
+    }
+    await room.save();
+    // Update tenant record
+    tenant.room = roomNumber;
+    tenant.moveInDate = startDate;
+    tenant.rent = rent;
+    await tenant.save();
+    // Data sync: both room and tenant reflect the relationship
+    return res.status(200).json({
+      status: 'success',
+      message: 'Room allocated successfully.',
+      data: {
+        tenant: {
+          id: tenant._id,
+          name: tenant.name,
+          mobile: tenant.contact,
+          aadhaar: tenant.aadhaar,
+          roomNumber: tenant.room,
+          rent: tenant.rent,
+        },
+        room: {
+          name: room.name,
+          type: room.type,
+          status: room.isBooked ? 'occupied' : 'available',
+          occupancy: room.occupancy,
+        }
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ status: 'error', message: error.message });
   }
 };

@@ -78,7 +78,23 @@ const EditTenantModal = ({ editingTenant, rooms, handleCancelEditTenant, handleS
             </select></label>
           </div>
           <div style={{ marginBottom: 12 }}>
-            <label>Security Deposit: <input type="number" value={editingTenant.securityDeposit || ''} onChange={e => setEditingTenant({ ...editingTenant, securityDeposit: e.target.value })} style={{ marginLeft: 8 }} /></label>
+            <label>Security Deposit: <input type="number" value={editingTenant.securityDeposit?.amount || ''} onChange={e => setEditingTenant({ ...editingTenant, securityDeposit: { ...editingTenant.securityDeposit, amount: e.target.value } })} style={{ marginLeft: 8 }} /></label>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label>Deposit Type: 
+              <select 
+                value={editingTenant.securityDeposit?.refundableType || 'fully'} 
+                onChange={e => setEditingTenant({ ...editingTenant, securityDeposit: { ...editingTenant.securityDeposit, refundableType: e.target.value } })} 
+                style={{ marginLeft: 8 }}
+              >
+                <option value="fully">Fully Refundable</option>
+                <option value="partial">Partially Refundable</option>
+                <option value="non-refundable">Non-Refundable</option>
+              </select>
+            </label>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label>Deposit Conditions: <input type="text" value={editingTenant.securityDeposit?.conditions || ''} onChange={e => setEditingTenant({ ...editingTenant, securityDeposit: { ...editingTenant.securityDeposit, conditions: e.target.value } })} style={{ marginLeft: 8 }} /></label>
           </div>
           <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
             <button type="submit" style={{ background: '#6b8bbd', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 24px', fontWeight: 600 }}>Save</button>

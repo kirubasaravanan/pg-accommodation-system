@@ -1,0 +1,23 @@
+/* Global theme variables and base styles */
+:root {
+  --primary-color: #466fa6;
+  --secondary-color: #7a8ca7;
+  --accent-color: #43a047;
+  --background-color: #f7faff;
+  --font-family: 'Roboto', sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-family);
+  background-color: var(--background-color);
+  color: #333;
+}
+a {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+button {
+  font-family: var(--font-family);
+}

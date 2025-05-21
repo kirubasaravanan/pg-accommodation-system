@@ -15,17 +15,22 @@ const RentDetails = () => {
   }, []);
 
   const handleSelectTenant = (tenantId) => {
-    setSelectedTenant(tenants.find(t => t._id === tenantId));
+    const tenant = tenants.find(t => t._id === tenantId);
+    setSelectedTenant(tenant);
+
     // Calculate forecast for this tenant
     const tenantBookings = bookings.filter(b => b.tenant === tenantId);
-    let totalDue = 0, totalPaid = 0, nextDueDate = null, securityDeposit = 0;
+    let totalDue = 0, totalPaid = 0, nextDueDate = null;
+    // Security deposit should be directly from the tenant object
+    const securityDepositAmount = tenant?.securityDeposit?.amount || 0;
+
     tenantBookings.forEach(b => {
       if (b.rentPaidStatus === 'paid') totalPaid += b.rentAmount;
       else totalDue += b.rentAmount;
       if (!nextDueDate || (b.rentDueDate && new Date(b.rentDueDate) > new Date(nextDueDate))) nextDueDate = b.rentDueDate;
-      if (b.securityDeposit) securityDeposit = b.securityDeposit;
+      // Removed securityDeposit extraction from bookings
     });
-    setForecast({ totalDue, totalPaid, nextDueDate, securityDeposit });
+    setForecast({ totalDue, totalPaid, nextDueDate, securityDeposit: securityDepositAmount });
   };
 
   // Group bookings by month
@@ -97,7 +102,7 @@ const RentDetails = () => {
                         <th>Status</th>
                         <th>Due Date</th>
                         <th>Payment Date</th>
-                        <th>Security Deposit</th>
+                        {/* Removed Security Deposit from booking history table header if it's not per-booking */}
                       </tr>
                     </thead>
                     <tbody>
@@ -110,7 +115,7 @@ const RentDetails = () => {
                           <td>{b.rentPaidStatus}</td>
                           <td>{b.rentDueDate ? b.rentDueDate.slice(0,10) : ''}</td>
                           <td>{b.rentPaymentDate ? b.rentPaymentDate.slice(0,10) : ''}</td>
-                          <td>{b.securityDeposit ? `₹${b.securityDeposit}` : '-'}</td>
+                          {/* Removed Security Deposit from booking history table row if it's not per-booking */}
                         </tr>
                       ))}
                     </tbody>
