@@ -178,3 +178,35 @@ exports.registerTenant = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+exports.getTenantHistory = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const tenant = await Tenant.findById(id).populate('dailyBookings').populate('bookingHistory.room');
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+    res.status(200).json(tenant);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+exports.updateSecurityDeposit = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount, refundableType, conditions } = req.body;
+
+    const tenant = await Tenant.findById(id);
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    tenant.securityDeposit = { amount, refundableType, conditions };
+    await tenant.save();
+
+    res.status(200).json({ message: 'Security deposit updated successfully', tenant });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};

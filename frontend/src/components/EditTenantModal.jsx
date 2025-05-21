@@ -2,25 +2,34 @@ import React from 'react';
 
 const EditTenantModal = ({ editingTenant, rooms, handleCancelEditTenant, handleSaveTenant, setEditingTenant }) => {
   if (!editingTenant) return null;
+
+  const modalStyle = {
+    backgroundColor: '#6C8EBF', // Sidebar blue color
+    color: 'white',
+    padding: '20px',
+    borderRadius: '8px',
+  };
+
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ background: '#fff', borderRadius: 16, padding: 32, minWidth: 320, boxShadow: '0 4px 32px rgba(0,0,0,0.12)', position: 'relative' }}>
+      <div style={{ ...modalStyle, minWidth: 320, boxShadow: '0 4px 32px rgba(0,0,0,0.12)', position: 'relative' }}>
         <button
           onClick={handleCancelEditTenant}
           style={{
-            position: 'absolute',
-            top: 16,
-            right: 16,
             background: 'none',
             border: 'none',
-            fontSize: 28,
-            color: '#466fa6',
+            color: '#FFFFFF', // Darker white for better contrast
+            fontSize: '24px', // Slightly larger font size
+            fontWeight: 'bold',
             cursor: 'pointer',
-            fontWeight: 900,
-            zIndex: 10
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
           }}
           aria-label="Close"
-        >×</button>
+        >
+          &times;
+        </button>
         <h3>Edit Tenant</h3>
         <form onSubmit={handleSaveTenant} autoComplete="off">
           <div style={{ marginBottom: 12 }}>

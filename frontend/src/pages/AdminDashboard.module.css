@@ -1,0 +1,42 @@
+.admin-dashboard {
+  padding: 32px;
+  background: #f7faff;
+  min-height: 100vh;
+}
+.room-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 16px;
+  background: #fff;
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+.room-table th, .room-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #e3eaf2;
+}
+.room-table th {
+  background: #e3f2fd;
+  font-weight: bold;
+}
+.button-primary {
+  background: #466fa6;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 24px;
+  font-weight: 700;
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(70,111,166,0.08);
+}
+.button-secondary {
+  background: #eee;
+  color: #333;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 24px;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+}

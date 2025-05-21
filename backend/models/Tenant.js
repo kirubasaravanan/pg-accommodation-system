@@ -7,6 +7,12 @@ const BookingHistorySchema = new mongoose.Schema({
   rentPaidStatus: { type: String, enum: ['paid', 'due', 'partial'], default: 'due' },
   rentDueDate: { type: Date },
   rentPaymentDate: { type: Date },
+  gapPeriod: [
+    {
+      startDate: { type: Date },
+      endDate: { type: Date },
+    },
+  ],
 }, { _id: false });
 
 const TenantSchema = new mongoose.Schema({
@@ -22,6 +28,18 @@ const TenantSchema = new mongoose.Schema({
   rentPaidStatus: { type: String, enum: ['paid', 'due', 'partial'], default: 'due' },
   rentDueDate: { type: Date },
   rentPaymentDate: { type: Date },
+  dailyBookings: [
+    {
+      date: { type: Date }, // Specific day of booking
+      room: { type: String }, // Room name or ID
+      rentPaidStatus: { type: String, enum: ['paid', 'due', 'partial'], default: 'due' },
+    },
+  ],
+  securityDeposit: {
+    amount: { type: Number, default: 0 },
+    refundableType: { type: String, enum: ['fully', 'partial', 'non-refundable'], default: 'fully' },
+    conditions: { type: String, default: '' },
+  },
 });
 
 module.exports = mongoose.model('Tenant', TenantSchema);

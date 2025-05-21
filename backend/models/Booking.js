@@ -11,7 +11,16 @@ const BookingSchema = new mongoose.Schema({
   rentPaidStatus: { type: String, enum: ['paid', 'due', 'partial'], default: 'due' },
   rentDueDate: { type: Date },
   rentPaymentDate: { type: Date },
-  securityDeposit: { type: Number, default: 0 },
+  rentDetails: {
+    dailyRate: Number,
+    numberOfDays: Number,
+    totalRent: Number,
+  },
+  securityDeposit: {
+    amount: Number,
+    refundableType: { type: String, enum: ['fully', 'partial', 'non-refundable'], default: 'fully' },
+    conditions: String,
+  },
   notes: { type: String },
 }, { timestamps: true });
 

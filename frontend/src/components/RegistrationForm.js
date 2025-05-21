@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 
 // Use the same API base URL as the rest of the app
-const API_BASE_URL = 'http://192.168.x.x:5000';
+const API_BASE_URL = 'http://localhost:5000';
 
 const ROOM_TYPES = [
   { value: 'Private', label: 'Single' },
@@ -41,7 +41,7 @@ const RegistrationForm = () => {
     setSuccess('');
   };
 
-  const validate = () => {
+  const validate = async () => {
     if (!form.name || !form.phone || !form.aadhaar || !form.email || !form.stayType || !form.roomType) {
       setError('All fields are required.');
       return false;
@@ -58,6 +58,20 @@ const RegistrationForm = () => {
       setError('Invalid email address.');
       return false;
     }
+
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/tenants/check-duplicate`, {
+        params: { phone: form.phone },
+      });
+      if (res.data.exists) {
+        setError('Phone number already exists.');
+        return false;
+      }
+    } catch (err) {
+      setError('Error checking phone number.');
+      return false;
+    }
+
     return true;
   };
 

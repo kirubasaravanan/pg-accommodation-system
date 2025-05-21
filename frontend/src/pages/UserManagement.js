@@ -6,7 +6,7 @@ const API_BASE_URL = 'http://192.168.x.x:5000';
 
 const ROLES = ['admin', 'staff', 'accountant', 'support'];
 
-const UserManagement = () => {
+const UserManagement = ({ onClose }) => {
   const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -86,12 +86,23 @@ const UserManagement = () => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto py-8">
+    <div className="max-w-2xl mx-auto py-8" style={{ backgroundColor: '#6C8EBF', color: 'white', borderRadius: '8px', padding: '20px' }}>
       <button
-        className="mb-4 text-blue-600 underline text-sm"
-        onClick={() => navigate(-1)}
+        onClick={onClose}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: '#000000', // Black color for better visibility
+          fontSize: '24px', // Slightly larger font size
+          fontWeight: 'bold',
+          cursor: 'pointer',
+          position: 'absolute',
+          top: '10px',
+          right: '10px',
+        }}
+        title="Close (ESC)"
       >
-        ← Back
+        &times;
       </button>
       <h2 className="text-2xl font-bold mb-4">User Management</h2>
       {error && <div className="text-red-600 mb-2">{error}</div>}
@@ -105,7 +116,13 @@ const UserManagement = () => {
         <input name="password" value={form.password} onChange={handleChange} placeholder="Password" className="border rounded px-3 py-2" type="password" required={!editingId} />
         <div className="flex gap-2">
           <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">{editingId ? 'Update' : 'Create'} User</button>
-          {editingId && <button type="button" className="bg-gray-300 px-4 py-2 rounded" onClick={() => { setEditingId(null); setForm({ name: '', email: '', role: 'staff', password: '' }); }}>Cancel</button>}
+          <button
+            type="button"
+            className="bg-gray-300 px-4 py-2 rounded"
+            onClick={onClose}
+          >
+            Cancel
+          </button>
         </div>
       </form>
       <h3 className="font-semibold mb-2">All Users</h3>

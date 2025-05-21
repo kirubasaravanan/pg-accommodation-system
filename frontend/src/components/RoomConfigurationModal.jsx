@@ -19,14 +19,33 @@ const RoomConfigurationModal = ({ onClose }) => {
       });
   }, []);
 
+  // Updated modal background color to match the Admin Dashboard sidebar
+  const modalStyle = {
+    backgroundColor: '#6C8EBF', // Sidebar blue color
+    color: 'white',
+    padding: '20px',
+    borderRadius: '8px',
+  };
+
   return (
     <div style={{ minWidth: 360 }}>
+      {/* Updated modal close icon style for better visibility */}
       <button
         onClick={onClose}
-        style={{ position: 'absolute', top: 16, right: 16, fontSize: 32, fontWeight: 900, color: '#e53935', background: '#fff', border: '2px solid #e57373', borderRadius: '50%', width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1001, cursor: 'pointer', boxShadow: '0 2px 8px rgba(229,57,53,0.08)' }}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: '#FFFFFF', // Darker white for better contrast
+          fontSize: '24px', // Slightly larger font size
+          fontWeight: 'bold',
+          cursor: 'pointer',
+          position: 'absolute',
+          top: '10px',
+          right: '10px',
+        }}
         title="Close (ESC)"
       >
-        ×
+        &times;
       </button>
       <h2 className="text-xl font-bold mb-4">Room Configuration</h2>
       {loading ? (

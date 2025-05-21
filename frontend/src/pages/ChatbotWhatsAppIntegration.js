@@ -77,10 +77,10 @@ const ChatbotWhatsAppIntegration = () => {
   return (
     <div className="max-w-xl mx-auto bg-white rounded-xl shadow-md p-8 mt-8">
       <button
-        className="mb-4 text-blue-600 underline text-sm"
-        onClick={() => navigate(-1)}
+        className="mb-4 text-blue-600 text-sm font-bold"
+        onClick={() => navigate('/')}
       >
-        ← Back
+        ✖ Close
       </button>
       <h2 className="text-2xl font-bold mb-6">Chatbot & WhatsApp Integration</h2>
       <Formik

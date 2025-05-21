@@ -2,9 +2,56 @@ import React from 'react';
 
 const EditRoomModal = ({ editingRoom, tenants, handleCancelEditRoom, handleSaveRoom, setEditingRoom, fetchRooms, fetchTenants, handleAssignTenantToRoom }) => {
   if (!editingRoom) return null;
+
+  // Updated modal background color to match the Admin Dashboard sidebar
+  const modalStyle = {
+    backgroundColor: '#6C8EBF', // Sidebar blue color
+    color: 'white',
+    padding: '20px',
+    borderRadius: '8px',
+  };
+
+  // Updated styles for Bed labels and values
+  const bedLabelStyle = {
+    color: 'white', // White font for labels
+    fontWeight: 'bold',
+  };
+
+  const bedValueStyle = {
+    color: '#800000', // Dark maroon for values
+    fontWeight: 'bold',
+  };
+
+  const removeButtonStyle = {
+    background: 'none',
+    border: 'none',
+    color: '#FF0000', // Darker red for better visibility
+    fontWeight: 'bold',
+    fontSize: '20px', // Slightly larger font size
+    cursor: 'pointer',
+    marginLeft: 4,
+  };
+
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ background: '#fff', borderRadius: 16, padding: 32, minWidth: 320, boxShadow: '0 4px 32px rgba(0,0,0,0.12)' }}>
+      <div style={{ ...modalStyle, minWidth: 320, boxShadow: '0 4px 32px rgba(0,0,0,0.12)' }}>
+        {/* Updated modal close icon style for better visibility */}
+        <button
+          onClick={handleCancelEditRoom}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#FFFFFF', // Darker white for better contrast
+            fontSize: '24px', // Slightly larger font size
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+          }}
+        >
+          &times;
+        </button>
         <h3>Edit Room</h3>
         <form onSubmit={handleSaveRoom} autoComplete="off">
           <div style={{ marginBottom: 12 }}>
@@ -49,22 +96,14 @@ const EditRoomModal = ({ editingRoom, tenants, handleCancelEditRoom, handleSaveR
                 const tenant = assignedTenants[idx];
                 return (
                   <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ minWidth: 80, color: '#888' }}>Bed {idx + 1}:</span>
+                    <span style={bedLabelStyle}>Bed {idx + 1}:</span>
                     {tenant ? (
                       <>
-                        <span style={{ color: '#466fa6', fontWeight: 600 }}>{tenant.name} ({tenant.contact})</span>
+                        <span style={bedValueStyle}>{tenant.name} ({tenant.contact})</span>
                         <button
                           type="button"
                           title="Remove tenant"
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: 'red',
-                            fontWeight: 900,
-                            fontSize: 18,
-                            cursor: 'pointer',
-                            marginLeft: 4
-                          }}
+                          style={removeButtonStyle}
                           onClick={async () => {
                             const token = localStorage.getItem('token');
                             if (!token) { alert('You are not logged in. Please log in again.'); return; }

@@ -64,6 +64,13 @@ const MODULES = [
     icon: <DatabaseBackup className="w-7 h-7 text-gray-700" />, 
     route: '/backup',
   },
+  {
+    key: 'tenant-history',
+    title: 'Tenant History',
+    desc: 'View and manage tenant booking history',
+    icon: <ClipboardList className="w-7 h-7 text-gray-700" />, 
+    route: '/tenant-history',
+  },
 ];
 
 const AdminConsole = () => {
@@ -92,13 +99,168 @@ const AdminConsole = () => {
   const renderModulePanel = () => {
     if (!openModule) return null;
     let content: React.ReactNode = null;
-    if (openModule.key === 'users') content = <UserManagement />;
+    if (openModule.key === 'users') content = <UserManagement onClose={() => setOpenModule(null)} />;
     else if (openModule.key === 'rooms') content = <RoomConfigurationModal onClose={() => setOpenModule(null)} />;
     else if (openModule.key === 'integrations') content = (
-      <>
-        <ChatbotWhatsAppIntegration />
-        <div className="mt-8 text-center text-gray-500 font-semibold text-lg">This module is under development. Please check back soon!</div>
-      </>
+      <div>
+        <button
+          onClick={() => setOpenModule(null)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#000000',
+            fontSize: '24px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+          }}
+          title="Close (ESC)"
+        >
+          &times;
+        </button>
+        <h2>Chatbot & WhatsApp Integration</h2>
+        {/* Integration content here */}
+      </div>
+    );
+    else if (openModule.key === 'rent-setup') content = (
+      <div>
+        <button
+          onClick={() => setOpenModule(null)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#000000',
+            fontSize: '24px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+          }}
+          title="Close (ESC)"
+        >
+          &times;
+        </button>
+        <h2>Rent Setup</h2>
+        {/* Rent setup content here */}
+      </div>
+    );
+    else if (openModule.key === 'discounts') content = (
+      <div>
+        <button
+          onClick={() => setOpenModule(null)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#000000',
+            fontSize: '24px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+          }}
+          title="Close (ESC)"
+        >
+          &times;
+        </button>
+        <h2>Discounts & Offers</h2>
+        {/* Discounts content here */}
+      </div>
+    );
+    else if (openModule.key === 'roles') content = (
+      <div>
+        <button
+          onClick={() => setOpenModule(null)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#000000',
+            fontSize: '24px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+          }}
+          title="Close (ESC)"
+        >
+          &times;
+        </button>
+        <h2>Permission/Roles Setup</h2>
+        {/* Roles setup content here */}
+      </div>
+    );
+    else if (openModule.key === 'policies') content = (
+      <div>
+        <button
+          onClick={() => setOpenModule(null)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#000000',
+            fontSize: '24px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+          }}
+          title="Close (ESC)"
+        >
+          &times;
+        </button>
+        <h2>Policy & Notice Board</h2>
+        {/* Policy content here */}
+      </div>
+    );
+    else if (openModule.key === 'backup') content = (
+      <div>
+        <button
+          onClick={() => setOpenModule(null)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#000000',
+            fontSize: '24px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+          }}
+          title="Close (ESC)"
+        >
+          &times;
+        </button>
+        <h2>Backup & Restore</h2>
+        {/* Backup content here */}
+      </div>
+    );
+    else if (openModule.key === 'tenant-history') content = (
+      <div>
+        <button
+          onClick={() => setOpenModule(null)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#000000',
+            fontSize: '24px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+          }}
+          title="Close (ESC)"
+        >
+          &times;
+        </button>
+        <h2>Tenant History</h2>
+        {/* Tenant history content here */}
+      </div>
     );
     else content = <ComingSoon title={openModule.title} />;
     return (
@@ -111,16 +273,35 @@ const AdminConsole = () => {
     );
   };
 
+  // Fixed the type issue with tileStyle by explicitly casting textAlign
+  const tileStyle: React.CSSProperties = {
+    backgroundColor: '#6C8EBF', // Sidebar blue color
+    color: 'white',
+    padding: '20px',
+    borderRadius: '8px',
+    textAlign: 'center' as React.CSSProperties['textAlign'], // Explicitly cast textAlign
+    margin: '10px',
+  };
+
+  // Updated grid layout for 4x4 structure
+  const gridStyle = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    gap: '20px',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
   return (
     <div className="max-w-5xl mx-auto py-10 px-4">
       
       <h1 className="text-3xl font-bold mb-8">Admin Console</h1>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+      <div style={gridStyle}>
         {MODULES.map(mod => (
           <button
             key={mod.key}
-            className="bg-white text-black rounded-xl shadow-sm hover:shadow-lg transition border border-gray-200 cursor-pointer flex flex-col items-start p-8 min-h-[160px] w-full text-left focus:outline-none focus:ring-2 focus:ring-blue-300 group"
-            style={{ fontFamily: 'Inter, Arial, sans-serif', fontWeight: 600 }}
+            style={tileStyle}
+            className="shadow-sm hover:shadow-lg transition border border-gray-200 cursor-pointer flex flex-col items-start p-8 min-h-[160px] w-full text-left focus:outline-none focus:ring-2 focus:ring-blue-300 group"
             onClick={() => setOpenModule(mod)}
             tabIndex={0}
           >
