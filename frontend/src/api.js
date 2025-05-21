@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-// Use local backend for development. Change this to your remote backend URL when you deploy.
+// Use localhost for backend API calls in development
 const API_BASE_URL = 'http://localhost:5000';
 
 export const login = async (credentials) => {

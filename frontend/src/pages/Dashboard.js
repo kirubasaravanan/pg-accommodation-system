@@ -1,21 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './AdminDashboard.css';
-import { FaHome, FaBed, FaDollarSign, FaChartBar, FaComments, FaRobot } from 'react-icons/fa';
+import { FaHome, FaBed, FaDollarSign, FaChartBar, FaComments, FaRobot, FaUserFriends, FaUserPlus, FaCog } from 'react-icons/fa';
 import { fetchRooms, fetchTenants } from '../api';
 import RoomBooking from '../components/RoomBooking';
 import TimeDateBar from '../components/TimeDateBar';
+import RegistrationForm from '../components/RegistrationForm';
+import ChatbotWhatsAppIntegration from './ChatbotWhatsAppIntegration';
+import AdminConsole from './AdminConsole.tsx';
+import EditTenantModal from '../components/EditTenantModal.jsx';
+import EditRoomModal from '../components/EditRoomModal.jsx';
 
 const API_BASE_URL = 'http://localhost:5000';
 
 const SIDEBAR_TABS = [
   { key: 'dashboard', label: 'Dashboard', icon: <FaHome /> },
   { key: 'roomBooking', label: 'Room Booking', icon: <FaBed /> },
+  { key: 'tenants', label: 'Tenants', icon: <FaUserFriends /> },
   { key: 'rentPayment', label: 'Rent Payment', icon: <FaDollarSign /> },
   { key: 'reports', label: 'Reports', icon: <FaChartBar /> },
   { key: 'complaints', label: 'Complaints', icon: <FaComments /> },
   { key: 'ai', label: 'AI Chatbot', icon: <FaRobot /> },
-  { key: 'tenants', label: 'Tenants', icon: <FaBed /> },
+  { key: 'registration', label: 'Registration', icon: <FaUserPlus /> },
+  { key: 'adminConsole', label: 'Admin Console', icon: <FaCog /> },
 ];
 
 const Dashboard = ({ onLogout }) => {
@@ -337,9 +344,8 @@ const Dashboard = ({ onLogout }) => {
         );
       case 'ai':
         return (
-          <div style={{ padding: 32 }}>
-            <h2>AI Chatbot</h2>
-            <p>AI chatbot integration coming soon.</p>
+          <div style={{ padding: 32, maxWidth: 700 }}>
+            <ChatbotWhatsAppIntegration />
           </div>
         );
       case 'tenants':
@@ -378,62 +384,6 @@ const Dashboard = ({ onLogout }) => {
                 ))}
               </tbody>
             </table>
-            {/* Edit Tenant Modal */}
-            {editingTenant && (
-              <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-                <div style={{ background: '#fff', borderRadius: 16, padding: 32, minWidth: 320, boxShadow: '0 4px 32px rgba(0,0,0,0.12)' }}>
-                  <h3>Edit Tenant</h3>
-                  <form onSubmit={handleSaveTenant}>
-                    <div style={{ marginBottom: 12 }}>
-                      <label>Name: <input value={editingTenant.name} onChange={e => setEditingTenant({ ...editingTenant, name: e.target.value })} style={{ marginLeft: 8 }} /></label>
-                    </div>
-                    <div style={{ marginBottom: 12 }}>
-                      <label>Contact: <input value={editingTenant.contact} onChange={e => setEditingTenant({ ...editingTenant, contact: e.target.value })} style={{ marginLeft: 8 }} /></label>
-                    </div>
-                    <div style={{ marginBottom: 12 }}>
-                      <label>Room: <select value={editingTenant.room || ''} onChange={e => setEditingTenant({ ...editingTenant, room: e.target.value })} style={{ marginLeft: 8 }}>
-                        <option value="">Select Room</option>
-                        {rooms.filter(r => (r.occupancy.max - r.occupancy.current > 0) || r.name === editingTenant.room).map(r => (
-                          <option key={r._id} value={r.name}>{r.name} ({r.type}, {r.location}) - {r.occupancy.max - r.occupancy.current + (editingTenant.room === r.name ? 1 : 0)} vacancy</option>
-                        ))}
-                      </select></label>
-                    </div>
-                    <div style={{ marginBottom: 12 }}>
-                      <label>Status: <select value={editingTenant.status} onChange={e => setEditingTenant({ ...editingTenant, status: e.target.value })} style={{ marginLeft: 8 }}>
-                        <option value="Active">Active</option>
-                        <option value="Inactive">Inactive</option>
-                      </select></label>
-                    </div>
-                    <div style={{ marginBottom: 12 }}>
-                      <label>Move In: <input type="date" value={editingTenant.moveInDate ? editingTenant.moveInDate.slice(0,10) : ''} onChange={e => setEditingTenant({ ...editingTenant, moveInDate: e.target.value })} style={{ marginLeft: 8 }} /></label>
-                    </div>
-                    <div style={{ marginBottom: 12 }}>
-                      <label>Move Out: <input type="date" value={editingTenant.moveOutDate ? editingTenant.moveOutDate.slice(0,10) : ''} onChange={e => setEditingTenant({ ...editingTenant, moveOutDate: e.target.value })} style={{ marginLeft: 8 }} /></label>
-                    </div>
-                    <div style={{ marginBottom: 12 }}>
-                      <label>Type: <select value={editingTenant.accommodationType} onChange={e => setEditingTenant({ ...editingTenant, accommodationType: e.target.value })} style={{ marginLeft: 8 }}>
-                        <option value="monthly">Monthly</option>
-                        <option value="daily">Daily</option>
-                      </select></label>
-                    </div>
-                    <div style={{ marginBottom: 12 }}>
-                      <label>Rent Status: <select value={editingTenant.rentPaidStatus} onChange={e => setEditingTenant({ ...editingTenant, rentPaidStatus: e.target.value })} style={{ marginLeft: 8 }}>
-                        <option value="paid">Paid</option>
-                        <option value="due">Due</option>
-                        <option value="partial">Partial</option>
-                      </select></label>
-                    </div>
-                    <div style={{ marginBottom: 12 }}>
-                      <label>Security Deposit: <input type="number" value={editingTenant.securityDeposit || ''} onChange={e => setEditingTenant({ ...editingTenant, securityDeposit: e.target.value })} style={{ marginLeft: 8 }} /></label>
-                    </div>
-                    <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-                      <button type="submit" style={{ background: '#6b8bbd', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 24px', fontWeight: 600 }}>Save</button>
-                      <button type="button" onClick={handleCancelEditTenant} style={{ background: '#eee', color: '#333', border: 'none', borderRadius: 8, padding: '8px 24px', fontWeight: 600 }}>Cancel</button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
           </div>
         );
       case 'roomBooking':
@@ -454,164 +404,106 @@ const Dashboard = ({ onLogout }) => {
             />
           </>
         );
+      case 'registration':
+        return (
+          <div style={{ padding: 32, maxWidth: 500 }}>
+            <h2>New Tenant Registration</h2>
+            <RegistrationForm />
+          </div>
+        );
+      case 'adminConsole':
+        return (
+          <div style={{ padding: 0, minHeight: '100vh', background: '#f4f7fa' }}>
+            <AdminConsole />
+          </div>
+        );
       default:
         return null;
     }
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f4f7fa', display: 'flex', fontFamily: 'Inter, Arial, sans-serif' }}>
-      {/* Sidebar */}
-      <div style={{ width: 250, background: '#6b8bbd', color: '#fff', borderRadius: 24, margin: 24, marginRight: 0, padding: '32px 0 24px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 4px 32px rgba(0,0,0,0.07)' }}>
-        <div style={{ fontWeight: 700, fontSize: 22, marginBottom: 32, letterSpacing: 0.5 }}>PG Accommodatio</div>
-        {SIDEBAR_TABS.map(tab => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
-            background: activeTab === tab.key ? '#466fa6' : 'transparent',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 12,
-            padding: '14px 24px',
-            margin: '4px 0',
-            width: 200,
-            textAlign: 'left',
-            fontWeight: activeTab === tab.key ? 700 : 500,
-            fontSize: 17,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 16,
-            cursor: 'pointer',
-            transition: 'background 0.2s',
-          }}>{tab.icon}<span>{tab.label}</span></button>
-        ))}
-        {/* Logout button */}
-        {typeof onLogout === 'function' && (
-          <button onClick={onLogout} style={{ marginTop: 32, background: '#fff', color: '#6b8bbd', border: 'none', borderRadius: 8, padding: '10px 24px', fontWeight: 700, fontSize: 16, cursor: 'pointer' }}>Logout</button>
-        )}
+    <>
+      <style>{`
+        @media (max-width: 800px) {
+          .dashboard-root {
+            flex-direction: column !important;
+            padding: 0 !important;
+          }
+          .dashboard-sidebar {
+            width: 100% !important;
+            margin: 0 0 12px 0 !important;
+            border-radius: 0 0 24px 24px !important;
+            min-width: 0 !important;
+            box-shadow: 0 2px 8px rgba(70,111,166,0.08) !important;
+          }
+          .dashboard-content {
+            margin: 0 !important;
+            border-radius: 24px 24px 0 0 !important;
+            padding: 16px !important;
+            min-width: 0 !important;
+          }
+        }
+        @media (max-width: 600px) {
+          .dashboard-content {
+            padding: 8px !important;
+          }
+        }
+      `}</style>
+      <div className="dashboard-root" style={{ minHeight: '100vh', background: '#f4f7fa', display: 'flex', fontFamily: 'Inter, Arial, sans-serif' }}>
+        {/* Sidebar */}
+        <div className="dashboard-sidebar" style={{ width: 250, background: '#6b8bbd', color: '#fff', borderRadius: 24, margin: 24, marginRight: 0, padding: '32px 0 24px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 4px 32px rgba(0,0,0,0.07)' }}>
+          <div style={{ fontWeight: 700, fontSize: 22, marginBottom: 32, letterSpacing: 0.5 }}>PG Accommodatio</div>
+          {SIDEBAR_TABS.map(tab => (
+            <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
+              background: activeTab === tab.key ? '#466fa6' : 'transparent',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 12,
+              padding: '14px 24px',
+              margin: '4px 0',
+              width: 200,
+              textAlign: 'left',
+              fontWeight: activeTab === tab.key ? 700 : 500,
+              fontSize: 17,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+              cursor: 'pointer',
+              transition: 'background 0.2s',
+            }}>{tab.icon}<span>{tab.label}</span></button>
+          ))}
+          {/* Logout button */}
+          {typeof onLogout === 'function' && (
+            <button onClick={onLogout} style={{ marginTop: 32, background: '#fff', color: '#6b8bbd', border: 'none', borderRadius: 8, padding: '10px 24px', fontWeight: 700, fontSize: 16, cursor: 'pointer' }}>Logout</button>
+          )}
+        </div>
+        {/* Main content */}
+        <div className="dashboard-content" style={{ flex: 1, margin: 24, marginLeft: 0, background: '#fff', borderRadius: 24, boxShadow: '0 4px 32px rgba(0,0,0,0.07)', padding: 32, minWidth: 0 }}>
+          <TimeDateBar />
+          {renderTabContent()}
+          {/* Edit Room Modal rendered globally so it doesn't break JSX tree */}
+          <EditRoomModal
+            editingRoom={editingRoom}
+            tenants={tenants}
+            handleCancelEditRoom={handleCancelEditRoom}
+            handleSaveRoom={handleSaveRoom}
+            setEditingRoom={setEditingRoom}
+            fetchRooms={fetchRooms}
+            fetchTenants={fetchTenants}
+            handleAssignTenantToRoom={handleAssignTenantToRoom}
+          />
+          {/* Edit Tenant Modal rendered globally so it doesn't break JSX tree */}
+          <EditTenantModal
+            editingTenant={editingTenant}
+            rooms={rooms}
+            handleCancelEditTenant={handleCancelEditTenant}
+            handleSaveTenant={handleSaveTenant}
+            setEditingTenant={setEditingTenant}
+          />
+        </div>
       </div>
-      {/* Main content */}
-      <div style={{ flex: 1, margin: 24, marginLeft: 0, background: '#fff', borderRadius: 24, boxShadow: '0 4px 32px rgba(0,0,0,0.07)', padding: 32, minWidth: 0 }}>
-        <TimeDateBar />
-        {renderTabContent()}
-        {/* Edit Room Modal rendered globally so it doesn't break JSX tree */}
-        {editingRoom && (
-          <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-            <div style={{ background: '#fff', borderRadius: 16, padding: 32, minWidth: 320, boxShadow: '0 4px 32px rgba(0,0,0,0.12)' }}>
-              <h3>Edit Room</h3>
-              <form onSubmit={handleSaveRoom}>
-                <div style={{ marginBottom: 12 }}>
-                  <label>Name: <input value={editingRoom.name} readOnly style={{ marginLeft: 8, background: '#eee' }} /></label>
-                </div>
-                <div style={{ marginBottom: 12 }}>
-                  <label>Location: <input value={editingRoom.location} readOnly style={{ marginLeft: 8, background: '#eee' }} /></label>
-                </div>
-                <div style={{ marginBottom: 12 }}>
-                  <label>Type: <select value={editingRoom.type} onChange={e => {
-                    const newType = e.target.value;
-                    let newPrice = editingRoom.price;
-                    let newMax = editingRoom.occupancy.max;
-                    if (newType === 'Private Mini') { newPrice = 7500; newMax = 1; }
-                    else if (newType === 'Private') { newPrice = 8500; newMax = 1; }
-                    else if (newType === 'Double Occupancy') { newPrice = 5800; newMax = 2; }
-                    else if (newType === 'Triple Occupancy') { newPrice = 4800; newMax = 3; }
-                    else if (newType === 'Four Occupancy') { newPrice = 4000; newMax = 4; }
-                    else if (newType === 'Five Occupancy') { newPrice = 3800; newMax = 5; }
-                    setEditingRoom({ ...editingRoom, type: newType, price: newPrice, occupancy: { ...editingRoom.occupancy, max: newMax } });
-                  }} style={{ marginLeft: 8 }}>
-                    <option value="Private Mini">Private Mini</option>
-                    <option value="Private">Private</option>
-                    <option value="Double Occupancy">Double Occupancy</option>
-                    <option value="Triple Occupancy">Triple Occupancy</option>
-                    <option value="Four Occupancy">Four Occupancy</option>
-                    <option value="Five Occupancy">Five Occupancy</option>
-                  </select></label>
-                </div>
-                <div style={{ marginBottom: 12 }}>
-                  <label>Price: <input type="number" value={editingRoom.price} readOnly style={{ marginLeft: 8, background: '#eee' }} /></label>
-                </div>
-                <div style={{ marginBottom: 12 }}>
-                  <label>Max Occupancy: <input type="number" value={editingRoom.occupancy.max} readOnly style={{ marginLeft: 8, background: '#eee' }} /></label>
-                </div>
-                {/* Multi-tenant Assignment UI */}
-                <div style={{ marginBottom: 12 }}>
-                  <label>Assign Tenants:</label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-                    {Array.from({ length: editingRoom.occupancy.max }).map((_, idx) => {
-                      const assignedTenants = tenants.filter(t => t.room === editingRoom.name);
-                      const tenant = assignedTenants[idx];
-                      return (
-                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ minWidth: 80, color: '#888' }}>Bed {idx + 1}:</span>
-                          {tenant ? (
-                            <>
-                              <span style={{ color: '#466fa6', fontWeight: 600 }}>{tenant.name} ({tenant.contact})</span>
-                              <button
-                                type="button"
-                                title="Remove tenant"
-                                style={{
-                                  background: 'none',
-                                  border: 'none',
-                                  color: 'red',
-                                  fontWeight: 900,
-                                  fontSize: 18,
-                                  cursor: 'pointer',
-                                  marginLeft: 4
-                                }}
-                                onClick={async () => {
-                                  const token = localStorage.getItem('token');
-                                  if (!token) { alert('You are not logged in. Please log in again.'); return; }
-                                  try {
-                                    await axios.put(`http://localhost:5000/api/tenants/${tenant._id}`, { ...tenant, room: '' }, {
-                                      headers: { Authorization: `Bearer ${token}` },
-                                    });
-                                    // Re-fetch rooms and tenants after removal
-                                    Promise.all([
-                                      fetchRooms(),
-                                      fetchTenants(),
-                                    ]).then(([roomsRes, tenantsRes]) => {
-                                      setRooms(roomsRes.data);
-                                      setTenants(tenantsRes.data);
-                                    });
-                                  } catch (err) {
-                                    alert('Failed to remove tenant from room.');
-                                  }
-                                }}
-                              >
-                                ×
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <select
-                                value={''}
-                                onChange={e => {
-                                  if (e.target.value) {
-                                    handleAssignTenantToRoom(e.target.value, editingRoom);
-                                  }
-                                }}
-                                style={{ minWidth: 160 }}
-                              >
-                                <option value="">Assign tenant...</option>
-                                {tenants.filter(t => t.status === 'Active' && (!t.room || t.room === '')).map(t => (
-                                  <option key={t._id} value={t._id}>{t.name} ({t.contact})</option>
-                                ))}
-                              </select>
-                            </>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-                  <button type="submit" style={{ background: '#6b8bbd', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 24px', fontWeight: 600 }}>Save</button>
-                  <button type="button" onClick={handleCancelEditRoom} style={{ background: '#eee', color: '#333', border: 'none', borderRadius: 8, padding: '8px 24px', fontWeight: 600 }}>Cancel</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+    </>
   );
 };
 

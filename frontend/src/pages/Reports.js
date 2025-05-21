@@ -36,33 +36,48 @@ const Reports = () => {
   });
 
   return (
-    <div style={{ padding: 32 }}>
-      <h1>Reports: Occupancy & Rent Trends</h1>
-      {loading ? <div>Loading...</div> : (
-        <table className="room-table" style={{ maxWidth: 700 }}>
-          <thead>
-            <tr>
-              <th>Month</th>
-              <th>Rooms Occupied</th>
-              <th>Total Rooms</th>
-              <th>Occupancy %</th>
-              <th>Rent Collected</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.keys(monthlyStats).sort().map(month => (
-              <tr key={month}>
-                <td>{monthName(month + '-01')}</td>
-                <td>{monthlyStats[month].occupied}</td>
-                <td>{monthlyStats[month].total}</td>
-                <td>{((monthlyStats[month].occupied / monthlyStats[month].total) * 100).toFixed(1)}%</td>
-                <td>₹{monthlyStats[month].rent}</td>
+    <>
+      <style>{`
+        @media (max-width: 600px) {
+          .reports-root {
+            padding: 8px !important;
+          }
+          .reports-table {
+            font-size: 14px !important;
+            overflow-x: auto !important;
+            display: block !important;
+            max-width: 100vw !important;
+          }
+        }
+      `}</style>
+      <div className="reports-root" style={{ padding: 32 }}>
+        <h1>Reports: Occupancy & Rent Trends</h1>
+        {loading ? <div>Loading...</div> : (
+          <table className="room-table reports-table" style={{ maxWidth: 700 }}>
+            <thead>
+              <tr>
+                <th>Month</th>
+                <th>Rooms Occupied</th>
+                <th>Total Rooms</th>
+                <th>Occupancy %</th>
+                <th>Rent Collected</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
+            </thead>
+            <tbody>
+              {Object.keys(monthlyStats).sort().map(month => (
+                <tr key={month}>
+                  <td>{monthName(month + '-01')}</td>
+                  <td>{monthlyStats[month].occupied}</td>
+                  <td>{monthlyStats[month].total}</td>
+                  <td>{((monthlyStats[month].occupied / monthlyStats[month].total) * 100).toFixed(1)}%</td>
+                  <td>₹{monthlyStats[month].rent}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
   );
 };
 
