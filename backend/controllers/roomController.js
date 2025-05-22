@@ -3,7 +3,7 @@ const Room = require('../models/Room');
 exports.getRooms = async (req, res) => {
   try {
     console.log('Fetching rooms from database...'); // Debug log
-    const rooms = await Room.find();
+    const rooms = await Room.find().populate('roomConfigurationType'); // Added populate
     console.log('Rooms fetched:', rooms); // Debug log
     res.status(200).json(rooms);
   } catch (error) {
@@ -14,18 +14,34 @@ exports.getRooms = async (req, res) => {
 
 exports.addRoom = async (req, res) => {
   try {
-    const { name, location, price, type, occupancy } = req.body;
+    const { name, location, price, type, occupancy, roomConfigurationTypeId } = req.body; // Added roomConfigurationTypeId
 
-    if (!name || !location || !price || !type || !occupancy || !occupancy.max) {
-      return res.status(400).json({ error: 'All fields are required' });
+    // Basic validation - can be expanded
+    if (!name || !location || price === undefined || !occupancy || occupancy.max === undefined) {
+      return res.status(400).json({ error: 'Name, location, price, and occupancy.max are required' });
     }
+    // If roomConfigurationTypeId is not provided, the old 'type' field might be required.
+    // For now, we assume the frontend might still send 'type' or derive it.
+    // If 'type' is not sent and no roomConfigurationTypeId, it might be an issue based on model's 'type' requirement.
+    // Since we made 'type' not required in the model if roomConfigurationTypeId is used, this is okay.
 
-    if (occupancy.current > occupancy.max) {
+    if (occupancy.current !== undefined && occupancy.current > occupancy.max) {
       return res.status(400).json({ error: 'Current occupancy cannot exceed maximum occupancy' });
     }
 
-    const room = await Room.create({ name, location, price, type, occupancy });
-    res.status(201).json(room);
+    const roomData = { 
+      name, 
+      location, 
+      price, 
+      type, // Keep type for now, could be used if no roomConfigurationTypeId
+      occupancy,
+      roomConfigurationType: roomConfigurationTypeId || undefined // Set to undefined if not provided
+    };
+
+    const room = await Room.create(roomData);
+    // Populate after creating to return the full object in the response
+    const populatedRoom = await Room.findById(room._id).populate('roomConfigurationType');
+    res.status(201).json(populatedRoom);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -34,10 +50,22 @@ exports.addRoom = async (req, res) => {
 exports.updateRoom = async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    const updates = req.body; // updates can include roomConfigurationTypeId
+
+    // If roomConfigurationTypeId is explicitly set to null or an empty string, handle it
+    if (updates.hasOwnProperty('roomConfigurationTypeId') && !updates.roomConfigurationTypeId) {
+      updates.roomConfigurationType = null; // Or undefined, depending on desired behavior
+    } else if (updates.roomConfigurationTypeId) {
+      updates.roomConfigurationType = updates.roomConfigurationTypeId;
+    }
+    // Remove roomConfigurationTypeId from updates if it was just a placeholder for roomConfigurationType
+    if (updates.hasOwnProperty('roomConfigurationTypeId')){
+        delete updates.roomConfigurationTypeId;
+    }
+
 
     // Update the room with the provided data
-    const updatedRoom = await Room.findByIdAndUpdate(id, updates, { new: true });
+    const updatedRoom = await Room.findByIdAndUpdate(id, updates, { new: true }).populate('roomConfigurationType'); // Added populate
 
     if (!updatedRoom) {
       return res.status(404).json({ message: 'Room not found' });
@@ -64,7 +92,7 @@ exports.deleteRoom = async (req, res) => {
 exports.getRoomById = async (req, res) => {
   try {
     const { id } = req.params;
-    const room = await Room.findById(id);
+    const room = await Room.findById(id).populate('roomConfigurationType'); // Added populate
     if (!room) return res.status(404).json({ error: 'Room not found' });
     res.status(200).json(room);
   } catch (error) {

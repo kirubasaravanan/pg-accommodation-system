@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import ConfirmationModal from '../../src/components/ConfirmationModal'; // Added import
 
 const API_BASE_URL = 'http://192.168.x.x:5000';
 
@@ -14,6 +15,8 @@ const UserManagement = ({ onClose }) => {
   const [form, setForm] = useState({ name: '', email: '', role: 'staff', password: '' });
   const [editingId, setEditingId] = useState(null);
   const [success, setSuccess] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false); // Added state for modal
+  const [userToDeleteId, setUserToDeleteId] = useState(null); // Added state for user ID to delete
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -72,17 +75,33 @@ const UserManagement = ({ onClose }) => {
     setSuccess('');
   };
 
-  const handleDelete = async id => {
-    if (!window.confirm('Delete this user?')) return;
+  // Modified handleDelete to open the modal
+  const handleDelete = id => {
+    setUserToDeleteId(id);
+    setIsModalOpen(true);
+  };
+
+  // New function to confirm deletion
+  const confirmDeleteUser = async () => {
+    if (!userToDeleteId) return;
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`${API_BASE_URL}/api/users/${id}`, {
+      await axios.delete(`${API_BASE_URL}/api/users/${userToDeleteId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      setSuccess('User deleted successfully.'); // Provide success feedback
       fetchUsers();
     } catch (err) {
       setError('Failed to delete user.');
     }
+    setIsModalOpen(false);
+    setUserToDeleteId(null);
+  };
+
+  // New function to cancel deletion
+  const cancelDeleteUser = () => {
+    setIsModalOpen(false);
+    setUserToDeleteId(null);
   };
 
   return (
@@ -151,6 +170,16 @@ const UserManagement = ({ onClose }) => {
           </tbody>
         </table>
       )}
+      {/* Added ConfirmationModal */}
+      <ConfirmationModal
+        isOpen={isModalOpen}
+        title="Confirm Deletion"
+        message="Are you sure you want to delete this user? This action cannot be undone."
+        onConfirm={confirmDeleteUser}
+        onCancel={cancelDeleteUser}
+        confirmText="Yes, Delete"
+        cancelText="No, Cancel"
+      />
     </div>
   );
 };

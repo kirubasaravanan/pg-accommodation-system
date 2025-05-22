@@ -106,5 +106,17 @@ pg-accommodation-system/
 
 ---
 
+## Future Enhancements
+
+### User Management
+- **Password Reset Functionality**: Currently, passwords are set at creation or update, but there's no dedicated "reset password" flow.
+- **More Granular Role Permissions**: Depending on your application's needs, you might want to define what each role can and cannot do more explicitly.
+- **User Profile Pictures/Avatars**: If relevant.
+- **Activity Logs for Users**: Tracking user actions.
+- **Bulk Actions**: E.g., deleting multiple users at once.
+- **Search/Filter Users**: For larger user lists.
+
+---
+
 ## License
 MIT

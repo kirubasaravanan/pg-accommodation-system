@@ -4,7 +4,7 @@ import axios from 'axios';
 const API_BASE_URL = 'http://localhost:5000';
 
 const Login = ({ onLogin }) => {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState(''); // Changed from email to username
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -14,9 +14,17 @@ const Login = ({ onLogin }) => {
     setLoading(true);
     setError('');
     try {
-      const res = await axios.post(`${API_BASE_URL}/api/auth/login`, { email, password });
+      // Send username and password to the backend
+      const res = await axios.post(`${API_BASE_URL}/api/auth/login`, { username, password });
       localStorage.setItem('token', res.data.token);
-      onLogin();
+      // Optionally, store other user info like role or username if returned by backend
+      if (res.data.username) {
+        localStorage.setItem('username', res.data.username);
+      }
+      if (res.data.role) {
+        localStorage.setItem('userRole', res.data.role);
+      }
+      onLogin(); // Callback to update app state, e.g., redirect to dashboard
     } catch (err) {
       setError(
         err.response && err.response.data && err.response.data.error
@@ -54,8 +62,8 @@ const Login = ({ onLogin }) => {
         <form onSubmit={handleSubmit} className="login-card" style={{ background: '#fff', padding: 32, borderRadius: 16, boxShadow: '0 4px 32px rgba(0,0,0,0.07)', minWidth: 320, maxWidth: '100%', width: '100%' }}>
           <h2 style={{ marginBottom: 24 }}>Login</h2>
           <div style={{ marginBottom: 16 }}>
-            <label>Email:<br />
-              <input value={email} onChange={e => setEmail(e.target.value)} style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #ccc' }} />
+            <label>Username:<br /> {/* Changed label from Email to Username */}
+              <input value={username} onChange={e => setUsername(e.target.value)} style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #ccc' }} />
             </label>
           </div>
           <div style={{ marginBottom: 16 }}>

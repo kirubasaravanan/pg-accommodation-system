@@ -42,16 +42,19 @@ const TenantsTab = ({
 
   // Fetch financial summary when tenants tab is active
   useEffect(() => {
+    console.log(`TenantsTab: useEffect for financial summary triggered. Received activeTab prop: "${activeTab}"`);
     if (activeTab === 'tenants') {
-      console.log('TenantsTab: Fetching financial summary');
+      console.log('TenantsTab: activeTab prop is "tenants", proceeding to fetch financial summary.');
       axios.get('http://localhost:5000/api/dashboard/tenant-financial-summary', {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       })
       .then(res => {
-        console.log('TenantsTab: Financial summary data', res.data);
+        console.log('TenantsTab: Financial summary data fetched. Response:', JSON.stringify(res.data, null, 2));
         setFinancialSummary(res.data);
       })
       .catch(err => console.error('TenantsTab: Error fetching financial summary', err));
+    } else {
+      console.log('TenantsTab: activeTab prop is NOT "tenants" (it is "' + activeTab + '"), skipping financial summary fetch.');
     }
   }, [activeTab]);
 

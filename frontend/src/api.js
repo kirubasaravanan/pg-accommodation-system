@@ -31,14 +31,38 @@ export const addUser = async (userData, token) => {
   });
 };
 
-export const fetchRooms = async () => {
-  const res = await axios.get(`${API_BASE_URL}/api/rooms`);
+export const fetchRooms = async (token) => {
+  const res = await axios.get(`${API_BASE_URL}/api/rooms`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   console.log('fetchRooms response:', res.data); // Debug: log fetched rooms
   return res;
 };
 
-export const fetchTenants = async () => {
-  const res = await axios.get(`${API_BASE_URL}/api/tenants`);
+export const fetchTenants = async (token) => {
+  const res = await axios.get(`${API_BASE_URL}/api/tenants`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   console.log('fetchTenants response:', res.data); // Debug: log fetched tenants
   return res;
+};
+
+export const fetchRoomConfigurationTypes = async (token) => {
+  const res = await axios.get(`${API_BASE_URL}/api/room-configurations`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  // console.log('fetchRoomConfigurationTypes response:', res.data); // Optional debug
+  return res;
+};
+
+export const fetchUsers = async (token) => {
+  return axios.get(`${API_BASE_URL}/api/users`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+};
+
+export const deleteUser = async (userId, token) => {
+  return axios.delete(`${API_BASE_URL}/api/users/${userId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 };

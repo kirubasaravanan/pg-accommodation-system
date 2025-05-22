@@ -14,6 +14,7 @@ import { UserProvider } from './context/UserContext';
 import ComingSoon from './pages/ComingSoon';
 import UserManagement from './pages/UserManagement';
 import MainLayout from './components/MainLayout';
+import NewAdminDashboard from './pages/NewAdminDashboard';
 
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem('token'));
@@ -46,8 +47,18 @@ function App() {
             element={
               token ? (
                 <MainLayout>
-                  <Dashboard onLogout={handleLogout} />
+                  <AdminDashboard onLogout={handleLogout} />
                 </MainLayout>
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
+          <Route
+            path="/new-dashboard"
+            element={
+              token ? (
+                <NewAdminDashboard />
               ) : (
                 <Navigate to="/" />
               )
