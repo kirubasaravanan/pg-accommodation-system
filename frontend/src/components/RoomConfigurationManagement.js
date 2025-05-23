@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios'; // Assuming you use axios
+// import axios from 'axios'; // No longer directly using axios for this fetch
+import { fetchRoomConfigurationTypes } from '../api'; // Import the function from api.js
 import RoomConfigurationModal from './RoomConfigurationModal';
 import ConfirmationModal from './ConfirmationModal'; // For delete confirmation
 // import styles from './RoomConfigurationManagement.module.css'; // Optional: for specific styling
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000'; // Adjust as needed
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000'; // Keep for other axios calls if any
 
 const RoomConfigurationManagement = ({ onBack }) => {
   const [configurations, setConfigurations] = useState([]);
@@ -26,12 +27,18 @@ const RoomConfigurationManagement = ({ onBack }) => {
     setError('');
     try {
       const token = getToken();
-      const res = await axios.get(`${API_BASE_URL}/api/room-configurations`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setConfigurations(res.data);
+      // Use the imported function
+      const res = await fetchRoomConfigurationTypes(token); 
+      // Assuming fetchRoomConfigurationTypes returns a response where res.data is the array
+      // If api.js already extracts .data, then it might just be res
+      // Let's assume for now api.js returns the full axios response object, so res.data is correct.
+      // If it's already processed in api.js, this might need to be just setConfigurations(res)
+      // We will add a log to check this.
+      console.log('RoomConfigurationManagement: Response from fetchRoomConfigurationTypes:', res);
+      setConfigurations(res.data || []); // Ensure it's an array, use res.data based on typical api.js structure
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to fetch room configurations.');
+      console.error('RoomConfigurationManagement: Error fetching configurations:', err);
+      setError(err.response?.data?.message || err.message || 'Failed to fetch room configurations.');
     }
     setLoading(false);
   };
@@ -39,6 +46,11 @@ const RoomConfigurationManagement = ({ onBack }) => {
   useEffect(() => {
     fetchConfigurations();
   }, []);
+
+  // Add this useEffect to log when configurations state changes
+  useEffect(() => {
+    console.log('RoomConfigurationManagement: configurations state updated:', configurations);
+  }, [configurations]);
 
   const handleAddNew = () => {
     setEditingConfiguration(null);
@@ -65,12 +77,18 @@ const RoomConfigurationManagement = ({ onBack }) => {
     setError('');
     setSuccessMessage('');
     const token = getToken();
+    // For save/update/delete, direct axios usage is fine if not refactored in api.js
+    // Or, ideally, these would also be functions in api.js
     const url = id 
-      ? `${API_BASE_URL}/api/room-configurations/${id}` 
-      : `${API_BASE_URL}/api/room-configurations`;
+      ? `${API_BASE_URL}/api/room-configuration-types/${id}`
+      : `${API_BASE_URL}/api/room-configuration-types`;
     const method = id ? 'put' : 'post';
 
     try {
+      // Using axios directly here, ensure it's imported if other axios calls were removed
+      // It was commented out at the top, let's re-add it or ensure api.js has these methods.
+      // For now, assuming axios is available or these should be moved to api.js too.
+      const axios = require('axios'); // Ensure axios is available for these operations
       const response = await axios[method](url, configData, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -91,7 +109,8 @@ const RoomConfigurationManagement = ({ onBack }) => {
     setSuccessMessage('');
     const token = getToken();
     try {
-      await axios.delete(`${API_BASE_URL}/api/room-configurations/${configToDelete._id}`, {
+      const axios = require('axios'); // Ensure axios is available
+      await axios.delete(`${API_BASE_URL}/api/room-configuration-types/${configToDelete._id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setSuccessMessage('Configuration deleted successfully!');

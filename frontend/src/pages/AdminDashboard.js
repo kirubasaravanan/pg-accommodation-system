@@ -131,7 +131,16 @@ const AdminDashboard = ({ onLogout }) => {
   const getAvailableRooms = () => { console.log('getAvailableRooms called'); return []; /* Placeholder */};
   const handleAddBooking = () => { console.log('handleAddBooking called'); /* Placeholder */};
   const handleCloseBookingModal = () => { console.log('handleCloseBookingModal called'); /* Placeholder */};
-  const getTenantsForRoom = (roomName) => { console.log('getTenantsForRoom called for:', roomName); return []; /* Placeholder */ };
+  const getTenantsForRoom = (roomName) => {
+    // Ensure tenants array is available and filter tenants for the given roomName.
+    // The tenant objects should already have 'status' (which can imply isActive) and 'intendedVacationDate' from the backend.
+    if (!tenants || tenants.length === 0) {
+      return [];
+    }
+    const tenantsInSpecificRoom = tenants.filter(t => t.room === roomName);
+    // console.log(`getTenantsForRoom for ${roomName}:`, tenantsInSpecificRoom); // For debugging
+    return tenantsInSpecificRoom;
+  };
 
 
   console.log('AdminDashboard: Component body END, before return statement.');
@@ -167,7 +176,7 @@ const AdminDashboard = ({ onLogout }) => {
             // handleEditRoom={handleEditRoom}
             // handleUpdateRoom={handleUpdateRoom}
             // handleDeleteRoom={handleDeleteRoom}
-            // getTenantsForRoom={getTenantsForRoom}
+            getTenantsForRoom={getTenantsForRoom}
             // ...etc
           />
         )}

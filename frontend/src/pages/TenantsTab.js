@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import SummaryCard from '../components/SummaryCard'; // Ensure SummaryCard is imported
+import SummaryCard from '../components/SummaryCard';
+import TenantHistoryModal from '../components/TenantHistoryModal'; // Uncommented
+import { getTenantHistory } from '../api';
 
 const TenantsTab = ({
-  activeTab, // added
+  activeTab,
   tenants,
   rooms,
   tenantForm,
@@ -19,11 +21,6 @@ const TenantsTab = ({
   ACCOMMODATION_TYPES,
   RENT_STATUS,
   getAvailableRooms,
-  handleAddBooking,
-  showBookingModal,
-  selectedTenantBookings,
-  selectedTenantName,
-  handleCloseBookingModal,
   setEditingTenantRowId,
   setEditingTenantForm
 }) => {
@@ -40,13 +37,19 @@ const TenantsTab = ({
     totalSecurityDepositCollected: 0
   });
 
-  // Fetch financial summary when tenants tab is active
+  const [showTenantHistoryModal, setShowTenantHistoryModal] = useState(false);
+  const [selectedTenantForHistory, setSelectedTenantForHistory] = useState(null);
+  const [tenantHistoryData, setTenantHistoryData] = useState({ tenant: null, bookings: [] });
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const token = localStorage.getItem('token');
+
   useEffect(() => {
     console.log(`TenantsTab: useEffect for financial summary triggered. Received activeTab prop: "${activeTab}"`);
     if (activeTab === 'tenants') {
       console.log('TenantsTab: activeTab prop is "tenants", proceeding to fetch financial summary.');
       axios.get('http://localhost:5000/api/dashboard/tenant-financial-summary', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        headers: { Authorization: `Bearer ${token}` }
       })
       .then(res => {
         console.log('TenantsTab: Financial summary data fetched. Response:', JSON.stringify(res.data, null, 2));
@@ -56,28 +59,25 @@ const TenantsTab = ({
     } else {
       console.log('TenantsTab: activeTab prop is NOT "tenants" (it is "' + activeTab + '"), skipping financial summary fetch.');
     }
-  }, [activeTab]);
+  }, [activeTab, token]); // Added token to dependency array
 
-  // Custom add tenant handler for admin: register, then allocate room
   const handleAdminAddTenant = async (e) => {
     e.preventDefault();
     setFormError('');
     setFormSuccess('');
     try {
-      // Register tenant (no room assigned yet)
       const res = await axios.post('http://localhost:5000/api/tenants/register', {
         name: tenantForm.name,
-        contact: tenantForm.contact, // Changed from mobile to contact to match AdminDashboard
-        email: tenantForm.email || '', // Added email
-        aadhaar: tenantForm.aadhaar || '',
+        contact: tenantForm.contact,
+        email: tenantForm.email || '',
+        aadharNumber: tenantForm.aadharNumber || '', // Changed from aadhaar to aadharNumber
         joiningDate: tenantForm.moveInDate || new Date().toISOString().slice(0, 10),
-        roomType: tenantForm.preferredRoomType || '', // Use preferredRoomType
+        roomType: tenantForm.preferredRoomType || '',
         emergencyContact: tenantForm.emergencyContact || '',
         remarks: tenantForm.remarks || '',
-      });
+      }, { headers: { Authorization: `Bearer ${token}` }}); // Added token
       setNewTenantId(res.data.data.tenantId);
-      // Fetch available rooms for selected type
-      const roomsRes = await axios.get(`http://localhost:5000/api/rooms/available?type=${tenantForm.preferredRoomType || ''}`);
+      const roomsRes = await axios.get(`http://localhost:5000/api/rooms/available?type=${tenantForm.preferredRoomType || ''}`, { headers: { Authorization: `Bearer ${token}` }}); // Added token
       setAvailableRooms(roomsRes.data.data);
       setShowRoomSelect(true);
     } catch (err) {
@@ -98,17 +98,43 @@ const TenantsTab = ({
         roomNumber: selectedRoom,
         startDate: new Date().toISOString().slice(0, 10),
         rent: availableRooms.find(r => r.name === selectedRoom)?.price || 0,
-      });
+      }, { headers: { Authorization: `Bearer ${token}` }}); // Added token
       setFormSuccess('Room allocated successfully!');
       setShowRoomSelect(false);
       setSelectedRoom('');
       setNewTenantId('');
+      // TODO: Refresh tenants list or call a prop function to do so
     } catch (err) {
       setFormError(err.response?.data?.message || 'Room allocation failed.');
     }
   };
 
-  console.log('TenantsTab: Rendering. Current financialSummary state:', financialSummary); // Log: Rendering with current state
+  const handleViewHistory = async (tenant) => {
+    if (!token) {
+      alert('Authentication error. Please login again.');
+      return;
+    }
+    setSelectedTenantForHistory(tenant);
+    setShowTenantHistoryModal(true);
+    setHistoryLoading(true);
+    try {
+      const response = await getTenantHistory(tenant._id, token);
+      setTenantHistoryData(response.data); 
+    } catch (error) {
+      console.error("Error fetching tenant history:", error);
+      alert("Failed to fetch tenant history.");
+      setTenantHistoryData({ tenant: null, bookings: [] }); 
+    }
+    setHistoryLoading(false);
+  };
+
+  const handleCloseTenantHistoryModal = () => {
+    setShowTenantHistoryModal(false);
+    setSelectedTenantForHistory(null);
+    setTenantHistoryData({ tenant: null, bookings: [] });
+  };
+
+  console.log('TenantsTab: Rendering. Current financialSummary state:', financialSummary);
 
   return (
     <>
@@ -123,12 +149,13 @@ const TenantsTab = ({
 
       {formError && <div style={{ color: '#e53935', background: '#fff3f3', borderRadius: 8, padding: '8px 16px', marginBottom: 16, fontWeight: 600 }}>{formError}</div>}
       {formSuccess && <div style={{ color: '#43a047', background: '#e8f5e9', borderRadius: 8, padding: '8px 16px', marginBottom: 16, fontWeight: 600 }}>{formSuccess}</div>}
+      
       {!showRoomSelect ? (
         <form onSubmit={editingTenantId ? handleUpdateTenant : handleAddTenant} style={{ marginBottom: 20 }}>
           <input name="name" placeholder="Name" value={tenantForm.name} onChange={handleTenantFormChange} required />
           <input name="contact" placeholder="Contact Number" value={tenantForm.contact} onChange={handleTenantFormChange} required />
           <input name="email" type="email" placeholder="Email" value={tenantForm.email || ''} onChange={handleTenantFormChange} required />
-          <input name="aadhaar" placeholder="Aadhaar Number" value={tenantForm.aadhaar || ''} onChange={handleTenantFormChange} required />
+          <input name="aadharNumber" placeholder="Aadhaar Number" value={tenantForm.aadharNumber || ''} onChange={handleTenantFormChange} /> 
           <input name="moveInDate" type="date" placeholder="Joining Date" value={tenantForm.moveInDate} onChange={handleTenantFormChange} title="Date when tenant joins" required />
           <select name="preferredRoomType" value={tenantForm.preferredRoomType || ''} onChange={handleTenantFormChange} required>
             <option value="">Select Preferred Room Type</option>
@@ -139,7 +166,6 @@ const TenantsTab = ({
           <input name="emergencyContact" placeholder="Emergency Contact (Optional)" value={tenantForm.emergencyContact || ''} onChange={handleTenantFormChange} />
           <textarea name="remarks" placeholder="Remarks (Optional)" value={tenantForm.remarks || ''} onChange={handleTenantFormChange} />
           
-          {/* Security Deposit Fields for Add/Edit Tenant Form */}
           <input name="securityDeposit.amount" type="number" placeholder="Security Deposit Amount" value={tenantForm.securityDeposit?.amount || ''} onChange={handleTenantFormChange} />
           <select name="securityDeposit.refundableType" value={tenantForm.securityDeposit?.refundableType || 'fully'} onChange={handleTenantFormChange}>
             <option value="fully">Fully Refundable</option>
@@ -148,7 +174,6 @@ const TenantsTab = ({
           </select>
           <input name="securityDeposit.conditions" placeholder="Deposit Conditions (Optional)" value={tenantForm.securityDeposit?.conditions || ''} onChange={handleTenantFormChange} />
 
-          {/* Fields for editing existing tenant, not typically part of new registration form directly */}
           {editingTenantId && (
             <>
               <select name="status" value={tenantForm.status} onChange={handleTenantFormChange}>
@@ -165,6 +190,14 @@ const TenantsTab = ({
                   <option key={status} value={status}>{status.charAt(0).toUpperCase() + status.slice(1)}</option>
                 ))}
               </select>
+              <input 
+                name="intendedVacationDate" 
+                type="date" 
+                placeholder="Intended Vacation Date" 
+                value={tenantForm.intendedVacationDate ? tenantForm.intendedVacationDate.split('T')[0] : ''} 
+                onChange={handleTenantFormChange} 
+                title="Date tenant intends to vacate" 
+              />
             </>
           )}
 
@@ -184,7 +217,7 @@ const TenantsTab = ({
           <button onClick={() => setShowRoomSelect(false)} style={{ background: '#eee', color: '#333', border: 'none', borderRadius: 8, padding: '10px 24px', fontWeight: 600, fontSize: 16, cursor: 'pointer' }}>Cancel</button>
         </div>
       )}
-      {/* Table and modal code can be split further if needed */}
+      
       <div style={{ overflowX: 'auto' }}>
         <table className="admin-table">
           <thead>
@@ -215,14 +248,25 @@ const TenantsTab = ({
                 <td>{tenant.securityDeposit?.amount ? `₹${tenant.securityDeposit.amount}` : 'N/A'}</td>
                 <td>
                   <button onClick={() => handleEditTenant(tenant)}>Edit</button>
-                  <button onClick={() => handleDeleteTenant(tenant._id)}>Delete</button>
-                  {/* Add other actions like view history etc. */}
+                  <button onClick={() => handleDeleteTenant(tenant._id)} style={{ marginLeft: 8 }}>Delete</button>
+                  <button onClick={() => handleViewHistory(tenant)} style={{ marginLeft: 8 }}>History</button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {/* Placeholder for TenantHistoryModal */}
+      {showTenantHistoryModal && selectedTenantForHistory && (
+        <TenantHistoryModal 
+          isOpen={showTenantHistoryModal}
+          onClose={handleCloseTenantHistoryModal}
+          tenant={selectedTenantForHistory} 
+          historyData={tenantHistoryData}
+          isLoading={historyLoading}
+        />
+      )}
     </>
   );
 };

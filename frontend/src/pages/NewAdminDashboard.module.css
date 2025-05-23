@@ -24,8 +24,13 @@ html, body, #root {
   overflow: hidden; /* Prevent container itself from showing scrollbars */
 }
 
-/* .dashboardLayout class can be removed if .dashboardContainer replaces its role */
-/* ... (rest of .dashboardLayout styles if you decide to keep it for a centered box variant) ... */
+.dashboard {
+  display: flex;
+  flex-direction: row; /* Arrange sidebar and main content horizontally */
+  height: 100vh; /* Full viewport height */
+  width: 100%;
+  overflow: hidden; /* Prevent scrollbars on the main dashboard container */
+}
 
 .sidebar {
   width: 240px;
@@ -36,6 +41,7 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+  overflow-y: auto; /* Added for potential scrolling within sidebar if menu items overflow */
 }
 
 .logo { /* Style for the PGMS logo */
@@ -94,12 +100,11 @@ html, body, #root {
 
 
 .mainContent {
-  flex-grow: 1;
+  flex-grow: 1; /* Allow main content to take up remaining space */
   background-color: #f8f9fa; /* Lighter background for content */
   padding: 0; 
   display: flex; 
   flex-direction: column; 
-  overflow-y: hidden; 
   min-height: 0; 
 }
 
@@ -110,7 +115,7 @@ html, body, #root {
   padding: 15px 30px; /* Adjusted padding */
   background-color: #FFFFFF; /* White header */
   border-bottom: 1px solid #dee2e6; 
-  flex-shrink: 0;
+  flex-shrink: 0; /* Header should not shrink */
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
@@ -144,11 +149,19 @@ html, body, #root {
   cursor: pointer;
 }
 
-.contentArea { 
+.contentArea { /* This class is present in your CSS but not used in NewAdminDashboard.js JSX */
+              /* It's a good candidate for the scrollable area within mainContent */
   flex-grow: 1;
   padding: 25px 30px; /* Adjusted padding */
-  overflow-y: auto; 
+  overflow-y: auto; /* Enable vertical scrolling for content that overflows */
   background-color: #f8f9fa; 
+}
+
+/* Styles for the actual content displayed based on activeTab */
+.dashboardContent, .adminConsole, .roomsTabContainer, .tenantsTabContainer { /* Added generic containers for tab content */
+  flex-grow: 1; /* Ensure tab content takes available space */
+  overflow-y: auto; /* Allow individual tab content to scroll if needed */
+  padding: 20px; /* Add some padding around tab content */
 }
 
 
@@ -203,16 +216,17 @@ html, body, #root {
   line-height: 1.5;
 }
 
-/* Dashboard Grid for Summary Cards */
-.dashboardGrid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 20px;
-    padding: 10px 0; /* Add some padding */
+/* Styles for Summary Cards Container */
+.summaryCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); /* Responsive grid */
+  gap: 20px; /* Space between cards */
+  padding: 20px 0; /* Padding around the grid */
 }
 
-/* Ensure styles from old AdminDashboard.css or AdminDashboard.module.css are either migrated or not conflicting */
-/* For example, .room-table might need to be defined here or imported if it's global */
+/* Dashboard Grid for Summary Cards - This seems like a duplicate or alternative to .summaryCards. Will keep .summaryCards for now. */
+/* ...existing code... */
+
 
 /* Basic table styling (can be expanded) */
 .room-table {

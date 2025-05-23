@@ -9,12 +9,31 @@ const RoomsTab = ({
   handleEditRoom, 
   handleDeleteRoom,
   setRoomForm,
-  getTenantsForRoom,
+  getTenantsForRoom, // This function should provide tenant objects including 'intendedVacationDate' and 'isActive' status
   rentForecast, 
   totalCapacity, 
   totalOccupiedBeds, 
   totalVacantBeds,
 }) => {
+
+  // Helper function for consistent and safe date formatting
+  const formatDateSafely = (dateInput) => {
+    if (!dateInput) return '';
+    try {
+      const date = new Date(dateInput);
+      if (isNaN(date.getTime())) {
+        // console.warn("Invalid date for formatting:", dateInput); // Optional: for debugging
+        return 'Invalid Date';
+      }
+      // Apply timezone adjustment to prevent date shift with toLocaleDateString
+      const offset = date.getTimezoneOffset();
+      const adjustedDate = new Date(date.getTime() + (offset * 60 * 1000));
+      return adjustedDate.toLocaleDateString();
+    } catch (e) {
+      // console.error("Error formatting date:", dateInput, e); // Optional: for debugging
+      return 'Error';
+    }
+  };
 
   // Calculate unoccupied rooms grouped by type
   const unoccupiedRoomsByType = (rooms || []).reduce((acc, room) => {
@@ -27,7 +46,7 @@ const RoomsTab = ({
 
     if (hasVacantSpots && 
         room.roomConfigurationType && 
-        typeof room.roomConfigurationType === 'object' && 
+        typeof room.roomConfigurationType === 'object' && // Ensure it's an object before accessing name
         typeof room.roomConfigurationType.name === 'string' && 
         room.roomConfigurationType.name.trim() !== '') {
       const typeName = room.roomConfigurationType.name;
@@ -97,7 +116,7 @@ const RoomsTab = ({
     <table className="room-table">
       <thead>
         <tr style={{ background: '#e3f2fd', fontWeight: 'bold' }}>
-          <td colSpan={9}>
+          <td colSpan={10}> {/* Increased colspan for the new column */}
             Total Rooms: {totalRoomsCount} | Total Capacity: {totalCapacity || 0} | Occupied Beds: {totalOccupiedBeds || 0} | Vacant Beds: {totalVacantBeds || 0}
           </td>
         </tr>
@@ -113,28 +132,92 @@ const RoomsTab = ({
           <th>Max Occupancy</th>
           <th>Current Occupancy</th>
           <th>Vacant Spots</th>
+          <th>Availability</th> {/* New Column */}
           <th>Tenants</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
         {(rooms || []).map((room) => {
+          if (!room) return null; // Add a guard for undefined room object
           const tenantsInRoom = getTenantsForRoom ? getTenantsForRoom(room.name) : [];
-          const currentOccupancy = typeof room.occupancy.current === 'number' ? room.occupancy.current : (tenantsInRoom.length || 0);
+          // Ensure currentOccupancy calculation considers only active tenants if not already handled by getTenantsForRoom or room.occupancy.current
+          // For simplicity, we'll assume room.occupancy.current is accurate for active tenants.
+          // If room.occupancy.current is not reliable, it should be:
+          // const activeTenantsInRoom = tenantsInRoom.filter(t => t.isActive !== false); // or t.status === 'Active'
+          // const currentOccupancy = activeTenantsInRoom.length;
+          const currentOccupancy = typeof room.occupancy.current === 'number' ? room.occupancy.current : (tenantsInRoom.filter(t => t.isActive !== false).length || 0);
+
           const maxOccupancy = typeof room.occupancy.max === 'number' ? room.occupancy.max : 0;
           const vacantSpots = maxOccupancy - currentOccupancy;
           const overOccupied = currentOccupancy > maxOccupancy;
+
+          let availabilityStatus = '';
+          let earliestVacationDateStr = '';
+
+          const activeTenantsWithIntendedVacationDate = tenantsInRoom.filter(
+            tenant => (tenant.isActive !== false) && tenant.intendedVacationDate
+          );
+
+          if (activeTenantsWithIntendedVacationDate.length > 0) {
+            // Sort by date to find the earliest
+            activeTenantsWithIntendedVacationDate.sort((a, b) => new Date(a.intendedVacationDate) - new Date(b.intendedVacationDate));
+            // Use the helper function for formatting
+            earliestVacationDateStr = formatDateSafely(activeTenantsWithIntendedVacationDate[0].intendedVacationDate);
+          }
+          
+          if (earliestVacationDateStr && earliestVacationDateStr !== 'Invalid Date' && earliestVacationDateStr !== 'Error') {
+            // If a tenant is vacating, the room will be available soon.
+            availabilityStatus = `Available Soon (tentatively from ${earliestVacationDateStr})`;
+          } else if (vacantSpots > 0) {
+            availabilityStatus = 'Available';
+          } else {
+            availabilityStatus = 'Occupied';
+          }
           
           return (
             <tr key={room._id} style={overOccupied ? { background: '#ffeaea' } : {}}>
-              <td>{room.name}</td>
-              <td>{room.roomConfigurationType ? room.roomConfigurationType.name : (room.type || 'N/A')}</td>
-              <td>{room.location}</td>
+              <td>{room.name || 'N/A'}</td>
+              <td>{room.roomConfigurationType && typeof room.roomConfigurationType === 'object' ? room.roomConfigurationType.name : 'N/A'}</td>
+              <td>{room.location || 'N/A'}</td>
               <td>₹{room.price}</td>
               <td>{maxOccupancy || 'N/A'}</td>
               <td>{currentOccupancy}</td>
               <td>{vacantSpots < 0 ? 0 : vacantSpots}</td>
-              <td>{tenantsInRoom.map(t => (<span key={t._id} style={{ display: 'inline-block', marginRight: 8 }}>{t.name}</span>))}</td>
+              <td style={{ fontWeight: availabilityStatus.startsWith('Available Soon') ? 'bold' : 'normal', color: availabilityStatus.startsWith('Available Soon') ? 'orange' : (availabilityStatus === 'Available' ? 'green' : 'red') }}>
+                {availabilityStatus}
+              </td>
+              <td>
+                {(tenantsInRoom || []).map(tenant => {
+                  const isActiveTenant = tenant.isActive !== false; 
+                  const showAsVacating = isActiveTenant && tenant.intendedVacationDate;
+                  
+                  const vacationDateDisplay = tenant.intendedVacationDate ? formatDateSafely(tenant.intendedVacationDate) : '';
+
+                  return (
+                    <span 
+                      key={tenant._id} 
+                      style={{ 
+                        display: 'inline-block', 
+                        marginRight: '8px',
+                        marginBottom: '4px', // Add some bottom margin for wrapped tenant lists
+                        padding: '2px 6px', 
+                        borderRadius: '4px', 
+                        border: isActiveTenant ? '1px solid transparent' : '1px dashed #ccc',
+                        textDecoration: showAsVacating ? 'line-through' : 'none',
+                        color: isActiveTenant ? (showAsVacating ? '#c65102' : 'inherit') : '#757575', // Darker orange for vacating, grey for inactive
+                        fontStyle: !isActiveTenant ? 'italic' : 'normal',
+                        backgroundColor: !isActiveTenant ? '#f5f5f5' : (showAsVacating ? '#fff3e0' : 'transparent'),
+                        fontSize: '0.9em' // Slightly smaller font for tenant names
+                      }}
+                    >
+                      {tenant.name}
+                      {showAsVacating && vacationDateDisplay && vacationDateDisplay !== 'Invalid Date' && vacationDateDisplay !== 'Error' ? ` (vacating ${vacationDateDisplay})` : ''}
+                      {!isActiveTenant ? ' (Inactive)' : ''}
+                    </span>
+                  );
+                })}
+              </td>
               <td>
                 <button onClick={() => handleEditRoom(room)}>Edit</button>
                 <button onClick={() => handleDeleteRoom(room._id)} style={{ marginLeft: 8 }}>Delete</button>

@@ -1,29 +1,25 @@
 const Room = require('../models/Room');
+const RoomConfigurationType = require('../models/RoomConfigurationType');
 
 exports.getRooms = async (req, res) => {
   try {
-    console.log('Fetching rooms from database...'); // Debug log
-    const rooms = await Room.find().populate('roomConfigurationType'); // Added populate
-    console.log('Rooms fetched:', rooms); // Debug log
+    console.log('Fetching rooms from database...');
+    const rooms = await Room.find().populate('roomConfigurationType');
+    console.log('Rooms fetched:', rooms);
     res.status(200).json(rooms);
   } catch (error) {
-    console.error('Error fetching rooms:', error.message); // Debug log
+    console.error('Error fetching rooms:', error.message);
     res.status(400).json({ error: error.message });
   }
 };
 
 exports.addRoom = async (req, res) => {
   try {
-    const { name, location, price, type, occupancy, roomConfigurationTypeId } = req.body; // Added roomConfigurationTypeId
+    const { name, location, price, /* type, */ occupancy, roomConfigurationTypeId } = req.body; // Removed type
 
-    // Basic validation - can be expanded
-    if (!name || !location || price === undefined || !occupancy || occupancy.max === undefined) {
-      return res.status(400).json({ error: 'Name, location, price, and occupancy.max are required' });
+    if (!name || !location || price === undefined || !occupancy || occupancy.max === undefined || !roomConfigurationTypeId) {
+      return res.status(400).json({ error: 'Name, location, price, occupancy.max, and roomConfigurationTypeId are required' });
     }
-    // If roomConfigurationTypeId is not provided, the old 'type' field might be required.
-    // For now, we assume the frontend might still send 'type' or derive it.
-    // If 'type' is not sent and no roomConfigurationTypeId, it might be an issue based on model's 'type' requirement.
-    // Since we made 'type' not required in the model if roomConfigurationTypeId is used, this is okay.
 
     if (occupancy.current !== undefined && occupancy.current > occupancy.max) {
       return res.status(400).json({ error: 'Current occupancy cannot exceed maximum occupancy' });
@@ -33,13 +29,12 @@ exports.addRoom = async (req, res) => {
       name, 
       location, 
       price, 
-      type, // Keep type for now, could be used if no roomConfigurationTypeId
+      // type, // Removed type
       occupancy,
-      roomConfigurationType: roomConfigurationTypeId || undefined // Set to undefined if not provided
+      roomConfigurationType: roomConfigurationTypeId
     };
 
     const room = await Room.create(roomData);
-    // Populate after creating to return the full object in the response
     const populatedRoom = await Room.findById(room._id).populate('roomConfigurationType');
     res.status(201).json(populatedRoom);
   } catch (error) {
@@ -50,22 +45,23 @@ exports.addRoom = async (req, res) => {
 exports.updateRoom = async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body; // updates can include roomConfigurationTypeId
+    const updates = req.body;
 
-    // If roomConfigurationTypeId is explicitly set to null or an empty string, handle it
     if (updates.hasOwnProperty('roomConfigurationTypeId') && !updates.roomConfigurationTypeId) {
-      updates.roomConfigurationType = null; // Or undefined, depending on desired behavior
+      return res.status(400).json({ message: 'roomConfigurationTypeId cannot be empty if provided for update as roomConfigurationType is required.' });
     } else if (updates.roomConfigurationTypeId) {
       updates.roomConfigurationType = updates.roomConfigurationTypeId;
     }
-    // Remove roomConfigurationTypeId from updates if it was just a placeholder for roomConfigurationType
+    
     if (updates.hasOwnProperty('roomConfigurationTypeId')){
         delete updates.roomConfigurationTypeId;
     }
 
+    if (updates.hasOwnProperty('type')) {
+      delete updates.type; // Remove old 'type' field if sent
+    }
 
-    // Update the room with the provided data
-    const updatedRoom = await Room.findByIdAndUpdate(id, updates, { new: true }).populate('roomConfigurationType'); // Added populate
+    const updatedRoom = await Room.findByIdAndUpdate(id, updates, { new: true }).populate('roomConfigurationType');
 
     if (!updatedRoom) {
       return res.status(404).json({ message: 'Room not found' });
@@ -92,7 +88,7 @@ exports.deleteRoom = async (req, res) => {
 exports.getRoomById = async (req, res) => {
   try {
     const { id } = req.params;
-    const room = await Room.findById(id).populate('roomConfigurationType'); // Added populate
+    const room = await Room.findById(id).populate('roomConfigurationType');
     if (!room) return res.status(404).json({ error: 'Room not found' });
     res.status(200).json(room);
   } catch (error) {
@@ -100,48 +96,51 @@ exports.getRoomById = async (req, res) => {
   }
 };
 
-// Get available rooms by type
 exports.getAvailableRooms = async (req, res) => {
   try {
-    const { type } = req.query;
-    if (!type) {
-      return res.status(400).json({ status: 'error', message: 'Room type is required.' });
+    const { roomConfigurationTypeId } = req.query;
+    if (!roomConfigurationTypeId) {
+      return res.status(400).json({ status: 'error', message: 'Room configuration type ID is required.' });
     }
-    // Only return rooms where occupancy.current < occupancy.max, not blocked, not fully booked
     const availableRooms = await Room.find({
-      type,
+      roomConfigurationType: roomConfigurationTypeId,
       blocked: false,
       $expr: { $lt: ["$occupancy.current", "$occupancy.max"] }
-    });
+    }).populate('roomConfigurationType');
+
     res.status(200).json({ status: 'success', data: availableRooms });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
   }
 };
 
-// Get distinct available room types
 exports.getAvailableRoomTypes = async (req, res) => {
   try {
-    const availableRoomObjects = await Room.aggregate([
-      {
-        $match: {
-          blocked: false,
-          $expr: { $lt: ["$occupancy.current", "$occupancy.max"] }
-        }
-      },
-      {
-        $group: {
-          _id: "$type" // Group by type
-        }
-      },
-      {
-        $project: {
-          _id: 0, // Exclude the default _id field from group
-          type: "$_id" // Rename _id to type
+    const availableRooms = await Room.find({
+      blocked: false,
+      $expr: { $lt: ["$occupancy.current", "$occupancy.max"] },
+      roomConfigurationType: { $ne: null }
+    }).populate('roomConfigurationType');
+
+    if (!availableRooms || availableRooms.length === 0) {
+      return res.status(200).json({ status: 'success', data: [] });
+    }
+
+    const uniqueConfigTypes = {};
+    availableRooms.forEach(room => {
+      if (room.roomConfigurationType) {
+        const config = room.roomConfigurationType;
+        if (!uniqueConfigTypes[config._id.toString()]) {
+          uniqueConfigTypes[config._id.toString()] = {
+            _id: config._id.toString(),
+            name: config.name,
+          };
         }
       }
-    ]);
-    const availableTypes = availableRoomObjects.map(rt => rt.type);
+    });
+
+    const availableTypes = Object.values(uniqueConfigTypes);
+
     res.status(200).json({ status: 'success', data: availableTypes });
   } catch (error) {
     console.error('Error fetching available room types:', error);

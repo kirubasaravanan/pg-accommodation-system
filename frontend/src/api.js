@@ -66,3 +66,28 @@ export const deleteUser = async (userId, token) => {
     headers: { Authorization: `Bearer ${token}` },
   });
 };
+
+// Tenant specific API calls
+export const addTenant = async (tenantData, token) => {
+  return axios.post(`${API_BASE_URL}/api/tenants`, tenantData, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+};
+
+export const updateTenant = async (tenantId, tenantData, token) => {
+  return axios.put(`${API_BASE_URL}/api/tenants/${tenantId}`, tenantData, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+};
+
+export const deleteTenant = async (tenantId, token) => {
+  return axios.delete(`${API_BASE_URL}/api/tenants/${tenantId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+};
+
+export const getTenantHistory = async (tenantId, token) => {
+  return axios.get(`${API_BASE_URL}/api/tenants/${tenantId}/history`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+};
