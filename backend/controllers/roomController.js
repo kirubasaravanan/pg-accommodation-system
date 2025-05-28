@@ -1,5 +1,6 @@
 const Room = require('../models/Room');
 const RoomConfigurationType = require('../models/RoomConfigurationType');
+const Tenant = require('../models/Tenant'); // Added Tenant model
 
 exports.getRooms = async (req, res) => {
   try {
@@ -45,32 +46,108 @@ exports.addRoom = async (req, res) => {
 exports.updateRoom = async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    const { bedAssignments, ...roomUpdates } = req.body;
 
-    if (updates.hasOwnProperty('roomConfigurationTypeId') && !updates.roomConfigurationTypeId) {
+    if (roomUpdates.hasOwnProperty('roomConfigurationTypeId') && !roomUpdates.roomConfigurationTypeId) {
       return res.status(400).json({ message: 'roomConfigurationTypeId cannot be empty if provided for update as roomConfigurationType is required.' });
-    } else if (updates.roomConfigurationTypeId) {
-      updates.roomConfigurationType = updates.roomConfigurationTypeId;
+    } else if (roomUpdates.roomConfigurationTypeId) {
+      roomUpdates.roomConfigurationType = roomUpdates.roomConfigurationTypeId;
+    }
+    if (roomUpdates.hasOwnProperty('roomConfigurationTypeId')){
+        delete roomUpdates.roomConfigurationTypeId;
+    }
+    if (roomUpdates.hasOwnProperty('type')) {
+      delete roomUpdates.type; 
+    }
+
+    const roomToUpdate = await Room.findById(id);
+    if (!roomToUpdate) {
+      return res.status(404).json({ message: 'Room not found' });
+    }
+    const roomIdentifierForTenant = roomToUpdate.name; 
+
+    let newOccupancyCount = 0;
+    const tenantUpdatePromises = [];
+
+    const tenantsCurrentlyInThisRoom = await Tenant.find({ room: roomToUpdate.name });
+    const newAssignedTenantIdsInRequest = [];
+
+    if (bedAssignments && Array.isArray(bedAssignments)) {
+      bedAssignments.forEach((tenantIdOrNull, index) => {
+        const bedNumberStr = String(index + 1); 
+
+        if (tenantIdOrNull) { 
+          const tenantId = tenantIdOrNull.toString();
+          newOccupancyCount++;
+          newAssignedTenantIdsInRequest.push(tenantId);
+
+          const existingTenantRecord = tenantsCurrentlyInThisRoom.find(t => t._id.toString() === tenantId);
+
+          if (existingTenantRecord) {
+            if (existingTenantRecord.bedNumber !== bedNumberStr || existingTenantRecord.status !== 'Active' || existingTenantRecord.room !== roomIdentifierForTenant) {
+              tenantUpdatePromises.push(
+                Tenant.findByIdAndUpdate(tenantId, {
+                  room: roomIdentifierForTenant,
+                  bedNumber: bedNumberStr,
+                  status: 'Active'
+                })
+              );
+            }
+          } else {
+            // Tenant is new to this room. We assume any previous room unassignment is handled by updateTenant or a dedicated service.
+            tenantUpdatePromises.push(
+              Tenant.findByIdAndUpdate(tenantId, {
+                room: roomIdentifierForTenant,
+                bedNumber: bedNumberStr,
+                status: 'Active'
+                // previousRoom field handling removed for now, will be managed by tenant update logic if needed
+              })
+            );
+          }
+        }
+      });
+
+      const tenantsToUnassignCompletely = tenantsCurrentlyInThisRoom.filter(
+        tenant => !newAssignedTenantIdsInRequest.includes(tenant._id.toString())
+      );
+
+      tenantsToUnassignCompletely.forEach(tenantToUnassign => {
+        tenantUpdatePromises.push(
+          Tenant.findByIdAndUpdate(tenantToUnassign._id, {
+            room: '', 
+            bedNumber: '', 
+            status: 'Pending Allocation' 
+          })
+        );
+      });
+
+    } else if (bedAssignments === undefined) {
+      newOccupancyCount = tenantsCurrentlyInThisRoom.filter(t => t.status === 'Active').length;
+    }
+
+    if (roomUpdates.occupancy) {
+      roomUpdates.occupancy.current = newOccupancyCount;
+    } else {
+      roomUpdates.occupancy = { ...roomToUpdate.occupancy, current: newOccupancyCount };
+    }
+
+    const maxOccupancy = roomUpdates.occupancy?.max !== undefined ? parseInt(roomUpdates.occupancy.max, 10) : parseInt(roomToUpdate.occupancy?.max, 10);
+    if (newOccupancyCount > maxOccupancy) {
+      return res.status(400).json({ message: `Cannot assign ${newOccupancyCount} tenants to a room with max capacity ${maxOccupancy}.` });
     }
     
-    if (updates.hasOwnProperty('roomConfigurationTypeId')){
-        delete updates.roomConfigurationTypeId;
-    }
+    await Promise.all(tenantUpdatePromises);
 
-    if (updates.hasOwnProperty('type')) {
-      delete updates.type; // Remove old 'type' field if sent
-    }
-
-    const updatedRoom = await Room.findByIdAndUpdate(id, updates, { new: true }).populate('roomConfigurationType');
+    const updatedRoom = await Room.findByIdAndUpdate(id, roomUpdates, { new: true }).populate('roomConfigurationType');
 
     if (!updatedRoom) {
-      return res.status(404).json({ message: 'Room not found' });
+      return res.status(404).json({ message: 'Room not found after update attempt' });
     }
 
     res.status(200).json(updatedRoom);
   } catch (error) {
     console.error('Error updating room:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 };
 

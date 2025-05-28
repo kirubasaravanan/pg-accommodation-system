@@ -11,6 +11,7 @@ const createRoomConfigurationType = async (req, res) => {
       convertedRent,
       acStatus,
       description,
+      categoryName, // Added categoryName
     } = req.body;
 
     const existingType = await RoomConfigurationType.findOne({ name });
@@ -27,6 +28,7 @@ const createRoomConfigurationType = async (req, res) => {
       convertedRent: isConvertible ? convertedRent : undefined,
       acStatus,
       description,
+      categoryName, // Added categoryName
     });
 
     const savedConfigurationType = await newConfigurationType.save();
@@ -78,6 +80,7 @@ const updateRoomConfigurationType = async (req, res) => {
       convertedRent,
       acStatus,
       description,
+      categoryName, // Added categoryName
     } = req.body;
 
     let configurationType = await RoomConfigurationType.findById(req.params.id);
@@ -108,6 +111,7 @@ const updateRoomConfigurationType = async (req, res) => {
     
     configurationType.acStatus = acStatus || configurationType.acStatus;
     configurationType.description = description !== undefined ? description : configurationType.description;
+    configurationType.categoryName = categoryName !== undefined ? categoryName : configurationType.categoryName; // Added categoryName
 
     const updatedConfigurationType = await configurationType.save();
     res.status(200).json(updatedConfigurationType);

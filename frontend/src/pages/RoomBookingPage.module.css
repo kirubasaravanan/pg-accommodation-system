@@ -1,0 +1,162 @@
+.roomBookingContainer {
+  padding: 20px;
+  background-color: #f9f9f9;
+  min-height: calc(100vh - 60px); /* Assuming header/sidebar height */
+}
+
+.header {
+  margin-bottom: 25px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.header h1 {
+  font-size: 2rem;
+  color: #333;
+  margin-bottom: 5px;
+}
+
+.header p {
+  font-size: 1rem;
+  color: #666;
+}
+
+.errorBanner {
+  background-color: #f8d7da;
+  color: #721c24;
+  padding: 10px;
+  border: 1px solid #f5c6cb;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.errorText {
+  color: #dc3545; /* Bootstrap danger color */
+  font-size: 0.9em;
+}
+
+.mainContent {
+  display: flex;
+  gap: 30px;
+}
+
+.roomSelectionArea {
+  flex: 1;
+  background-color: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.roomSelectionArea h2 {
+  font-size: 1.5rem;
+  color: #444;
+  margin-bottom: 15px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+}
+
+.roomCardPlaceholder {
+  background-color: #f8f9fa;
+  border: 1px dashed #ced4da;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 15px;
+  text-align: center;
+  color: #6c757d;
+}
+
+.roomCard {
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 15px;
+  cursor: pointer;
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+
+.roomCard:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.roomCard.selected {
+  border-color: #007bff;
+  box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+}
+
+.roomCard h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  color: #007bff;
+}
+
+.roomCard p {
+  margin-bottom: 5px;
+  font-size: 0.9rem;
+  color: #495057;
+}
+
+.bookingFormArea {
+  flex: 1.5; /* Give more space to the form */
+  background-color: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.bookingFormArea h2 {
+  font-size: 1.5rem;
+  color: #444;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+}
+
+.formField {
+  margin-bottom: 20px;
+}
+
+.formField label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: bold;
+  color: #495057;
+}
+
+.formField input[type="text"],
+.formField input[type="date"] {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  box-sizing: border-box;
+  font-size: 1rem;
+}
+
+.readOnlyInput {
+  background-color: #e9ecef; /* Light grey background for read-only fields */
+  cursor: not-allowed;
+}
+
+.submitButton {
+  background-color: #28a745; /* Green */
+  color: white;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.2s ease-in-out;
+}
+
+.submitButton:hover {
+  background-color: #218838; /* Darker green */
+}
+
+.submitButton:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+}

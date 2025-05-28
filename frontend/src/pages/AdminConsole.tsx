@@ -1,335 +1,408 @@
 import React, { useContext, useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserContext } from '../context/UserContext';
-import { Home, Users, BedDouble, IndianRupee, Percent, ShieldCheck, ClipboardList, PlugZap, DatabaseBackup } from 'lucide-react';
+import { Home, Users, BedDouble, IndianRupee, Percent, ShieldCheck, ClipboardList, PlugZap, DatabaseBackup, Building } from 'lucide-react';
 import UserManagement from './UserManagement';
 import ComingSoon from './ComingSoon';
-import ChatbotWhatsAppIntegration from './ChatbotWhatsAppIntegration';
 import RoomConfigurationModal from '../components/RoomConfigurationModal';
 import RentSecurityTab from './RentSecurityTab';
+import RoomsAndRentSetup from '../components/RoomsAndRentSetup';
+import { 
+  addRoomConfigurationType, 
+  fetchRoomConfigurationTypes, 
+  updateRoomConfigurationType, 
+} from '../api';
+
+// Define a basic RoomType, adjust as per your actual room model
+interface RoomType {
+  _id: string;
+  name: string;
+  location?: string;
+  roomConfigurationType: string | RoomConfigType; // ID or populated object
+  price: number;
+  occupancy: {
+    current: number;
+    max: number;
+  };
+  // Add other room properties as needed
+}
+
+interface AdminConsoleProps {
+  rooms?: RoomType[]; 
+  onAddActualRoom?: (roomData: Omit<RoomType, '_id' | 'occupancy'> & { occupancy: { max: number } }) => Promise<void>;
+  onEditActualRoom?: (room: RoomType) => void; 
+  onDeleteActualRoom?: (roomId: string) => Promise<void>;
+}
+
+interface RoomConfigType {
+  _id: string;
+  name: string;
+  baseSharingCapacity?: number;
+  baseRent?: number;
+  isConvertible?: boolean;
+  convertedSharingCapacity?: number;
+  convertedRent?: number;
+  acStatus?: string;
+  description?: string;
+}
 
 const MODULES = [
   {
     key: 'users',
     title: 'User Management',
     desc: 'Manage admin, staff, roles',
-    icon: <Users className="w-7 h-7 text-gray-700" />, 
+    icon: <Users className="w-7 h-7" />, 
     route: '/users',
   },
   {
     key: 'rooms',
-    title: 'Room Configuration',
-    desc: 'Add and edit rooms, types',
-    icon: <BedDouble className="w-7 h-7 text-gray-700" />, 
-    route: '/rooms',
+    title: 'Room Configuration Types',
+    desc: 'Define types of rooms (e.g., Single AC)',
+    icon: <BedDouble className="w-7 h-7" />, 
+    route: '/room-configurations',
   },
   {
-    key: 'rent-setup',
-    title: 'Rent Setup',
-    desc: 'Configure rent amounts',
-    icon: <IndianRupee className="w-7 h-7 text-gray-700" />, 
-    route: '/rent-setup',
+    key: 'room-instance-management',
+    title: 'Room & Bed Management',
+    desc: 'Manage physical rooms, assign types, and view rent structures.',
+    icon: <Building className="w-7 h-7" />,
+    route: '/room-instance-management',
   },
   {
     key: 'discounts',
     title: 'Discounts & Offers',
     desc: 'Apply custom discounts',
-    icon: <Percent className="w-7 h-7 text-gray-700" />, 
+    icon: <Percent className="w-7 h-7" />, 
     route: '/discounts',
   },
   {
     key: 'roles',
     title: 'Permission/Roles Setup',
     desc: 'Define user access rights',
-    icon: <ShieldCheck className="w-7 h-7 text-gray-700" />, 
+    icon: <ShieldCheck className="w-7 h-7" />, 
     route: '/roles',
   },
   {
     key: 'policies',
     title: 'Policy & Notice Board',
     desc: 'Update rules and announcements',
-    icon: <ClipboardList className="w-7 h-7 text-gray-700" />, 
+    icon: <ClipboardList className="w-7 h-7" />, 
     route: '/policies',
   },
   {
     key: 'integrations',
     title: 'Integrations Setup',
     desc: 'Connect external services',
-    icon: <PlugZap className="w-7 h-7 text-gray-700" />, 
+    icon: <PlugZap className="w-7 h-7" />, 
     route: '/integrations',
   },
   {
     key: 'backup',
     title: 'Backup & Restore',
     desc: 'Manage data backup',
-    icon: <DatabaseBackup className="w-7 h-7 text-gray-700" />, 
+    icon: <DatabaseBackup className="w-7 h-7" />, 
     route: '/backup',
   },
   {
     key: 'tenant-history',
     title: 'Tenant History',
     desc: 'View and manage tenant booking history',
-    icon: <ClipboardList className="w-7 h-7 text-gray-700" />, 
+    icon: <ClipboardList className="w-7 h-7" />, 
     route: '/tenant-history',
   },
   {
     key: 'rent-security',
-    title: 'Rent & Security',
+    title: 'Rent & Security Deposits',
     desc: 'View rent forecasts and security deposits',
-    icon: <IndianRupee className="w-7 h-7 text-gray-700" />, 
+    icon: <IndianRupee className="w-7 h-7" />, 
     route: '/rent-security',
   },
 ];
 
-const AdminConsole = () => {
+const AdminConsole: React.FC<AdminConsoleProps> = ({
+  rooms: actualRoomsFromParent = [], // Default to empty array if not provided
+  onAddActualRoom,
+  onEditActualRoom,
+  onDeleteActualRoom,
+}) => {
   const navigate = useNavigate();
   const { user } = useContext(UserContext) as { user: any };
-  const [openModule, setOpenModule] = useState(null as null | typeof MODULES[number]);
+  const [openModuleKey, setOpenModuleKey] = useState<string | null>(null);
+  const [roomConfigs, setRoomConfigs] = useState<RoomConfigType[]>([]);
+  const [editingRoomConfig, setEditingRoomConfig] = useState<RoomConfigType | null>(null);
+  const [showRoomConfigModal, setShowRoomConfigModal] = useState(false);
+  const [isLoadingRoomConfigs, setIsLoadingRoomConfigs] = useState(false);
 
-  useEffect(() => {
-    if (!user || user.role !== 'admin') {
-      navigate('/dashboard');
+  const loadRoomConfigs = useCallback(async () => {
+    setIsLoadingRoomConfigs(true);
+    try {
+      const response = await fetchRoomConfigurationTypes();
+      setRoomConfigs(response.data || []);
+    } catch (error) {
+      console.error("Error fetching room configuration types:", error);
+    } finally {
+      setIsLoadingRoomConfigs(false);
     }
-  }, [user, navigate]);
-
-  // ESC key closes the panel
-  const escListener = useCallback((e) => {
-    if (e.key === 'Escape') setOpenModule(null);
   }, []);
+
   useEffect(() => {
-    if (openModule) {
+    if (user && user.role === 'admin') {
+      loadRoomConfigs();
+    } else if (!user) {
+      // navigate('/login'); 
+    } else if (user.role !== 'admin'){
+        navigate('/dashboard');
+    }
+  }, [user, navigate, loadRoomConfigs]);
+  
+  const escListener = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setOpenModuleKey(null);
+      setShowRoomConfigModal(false);
+      setEditingRoomConfig(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (openModuleKey || showRoomConfigModal) {
       window.addEventListener('keydown', escListener);
       return () => window.removeEventListener('keydown', escListener);
     }
-  }, [openModule, escListener]);
+  }, [openModuleKey, showRoomConfigModal, escListener]);
 
-  // Render the selected module in a side panel/modal
-  const renderModulePanel = () => {
-    if (!openModule) return null;
-    let content: React.ReactNode = null;
-    if (openModule.key === 'users') content = <UserManagement onClose={() => setOpenModule(null)} />;
-    else if (openModule.key === 'rooms') content = <RoomConfigurationModal onClose={() => setOpenModule(null)} />;
-    else if (openModule.key === 'integrations') content = (
-      <div>
-        <button
-          onClick={() => setOpenModule(null)}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#000000',
-            fontSize: '24px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-          }}
-          title="Close (ESC)"
-        >
-          &times;
-        </button>
-        <h2>Chatbot & WhatsApp Integration</h2>
-        {/* Integration content here */}
-      </div>
-    );
-    else if (openModule.key === 'rent-setup') content = (
-      <div>
-        <button
-          onClick={() => setOpenModule(null)}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#000000',
-            fontSize: '24px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-          }}
-          title="Close (ESC)"
-        >
-          &times;
-        </button>
-        <h2>Rent Setup</h2>
-        {/* Rent setup content here */}
-      </div>
-    );
-    else if (openModule.key === 'discounts') content = (
-      <div>
-        <button
-          onClick={() => setOpenModule(null)}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#000000',
-            fontSize: '24px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-          }}
-          title="Close (ESC)"
-        >
-          &times;
-        </button>
-        <h2>Discounts & Offers</h2>
-        {/* Discounts content here */}
-      </div>
-    );
-    else if (openModule.key === 'roles') content = (
-      <div>
-        <button
-          onClick={() => setOpenModule(null)}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#000000',
-            fontSize: '24px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-          }}
-          title="Close (ESC)"
-        >
-          &times;
-        </button>
-        <h2>Permission/Roles Setup</h2>
-        {/* Roles setup content here */}
-      </div>
-    );
-    else if (openModule.key === 'policies') content = (
-      <div>
-        <button
-          onClick={() => setOpenModule(null)}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#000000',
-            fontSize: '24px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-          }}
-          title="Close (ESC)"
-        >
-          &times;
-        </button>
-        <h2>Policy & Notice Board</h2>
-        {/* Policy content here */}
-      </div>
-    );
-    else if (openModule.key === 'backup') content = (
-      <div>
-        <button
-          onClick={() => setOpenModule(null)}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#000000',
-            fontSize: '24px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-          }}
-          title="Close (ESC)"
-        >
-          &times;
-        </button>
-        <h2>Backup & Restore</h2>
-        {/* Backup content here */}
-      </div>
-    );
-    else if (openModule.key === 'tenant-history') content = (
-      <div>
-        <button
-          onClick={() => setOpenModule(null)}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#000000',
-            fontSize: '24px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-          }}
-          title="Close (ESC)"
-        >
-          &times;
-        </button>
-        <h2>Tenant History</h2>
-        {/* Tenant history content here */}
-      </div>
-    );
-    else if (openModule.key === 'rent-security') content = (
-      <RentSecurityTab onClose={() => setOpenModule(null)} />
-    );
-    else content = <ComingSoon title={openModule.title} />;
-    return (
-      <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-        <div style={{ background: '#fff', borderRadius: 16, padding: 32, minWidth: 360, maxWidth: '90vw', maxHeight: '90vh', boxShadow: '0 4px 32px rgba(0,0,0,0.12)', position: 'relative', overflowY: 'auto', zIndex: 101 }}>
-          {/* The close button is now handled by the modal component for rooms */}
-          <div style={{ paddingTop: 24 }}>{content}</div>
-        </div>
-      </div>
-    );
+  const handleOpenRoomConfigModal = (config: RoomConfigType | null = null) => {
+    setEditingRoomConfig(config);
+    setShowRoomConfigModal(true);
+    setOpenModuleKey(null); 
   };
 
-  // Fixed the type issue with tileStyle by explicitly casting textAlign
+  const handleCloseRoomConfigModal = () => {
+    setShowRoomConfigModal(false);
+    setEditingRoomConfig(null);
+  };
+
+  const handleSaveRoomConfiguration = async (configData: Omit<RoomConfigType, '_id'>, configId?: string) => {
+    try {
+      if (configId) {
+        await updateRoomConfigurationType(configId, configData);
+      } else {
+        await addRoomConfigurationType(configData);
+      }
+      loadRoomConfigs(); 
+      handleCloseRoomConfigModal();
+    } catch (error) {
+      console.error("Error saving room configuration:", error);
+      alert(`Failed to save room configuration: ${error.response?.data?.error || error.message}`);
+    }
+  };
+  
+  const handleGenericModuleClick = (moduleKey: string) => {
+    if (moduleKey === 'rooms') {
+      handleOpenRoomConfigModal(); 
+    } else {
+      setOpenModuleKey(moduleKey);
+      setShowRoomConfigModal(false); 
+    }
+  };
+  
+  const handleCloseGenericModule = () => {
+    setOpenModuleKey(null);
+  };
+
+  const renderModulePanelContent = (): React.ReactElement | null => {
+    if (!openModuleKey) return null;
+    const module = MODULES.find(m => m.key === openModuleKey);
+    if (!module) return null;
+
+    const CloseButton = () => (
+      <button
+        onClick={handleCloseGenericModule}
+        style={{
+          background: 'none', border: 'none', color: '#333',
+          fontSize: '24px', fontWeight: 'bold', cursor: 'pointer',
+          position: 'absolute', top: '15px', right: '15px'
+        }}
+        title="Close (ESC)"
+      >
+        &times;
+      </button>
+    );
+
+    switch (module.key) {
+      case 'users':
+        return <UserManagement onClose={handleCloseGenericModule} />;
+      
+      case 'room-instance-management':
+        return (
+          <div>
+            <CloseButton />
+            <RoomsAndRentSetup
+              onBack={handleCloseGenericModule}
+              rooms={actualRoomsFromParent}
+              roomConfigurationTypes={roomConfigs}
+              handleAddRoom={async (roomData) => {
+                if (onAddActualRoom) {
+                  try {
+                    await onAddActualRoom(roomData);
+                  } catch (error) {
+                    console.error("Error adding actual room from AdminConsole:", error);
+                  }
+                } else {
+                  console.warn('onAddActualRoom prop is not provided to AdminConsole');
+                  alert('Add room functionality is not configured.');
+                }
+              }}
+              handleEditRoom={(room) => {
+                if (onEditActualRoom) {
+                  onEditActualRoom(room);
+                } else {
+                  console.warn('onEditActualRoom prop is not provided to AdminConsole');
+                  alert('Edit room functionality is not configured.');
+                }
+              }}
+              handleDeleteRoom={async (roomId) => {
+                if (onDeleteActualRoom) {
+                  try {
+                    await onDeleteActualRoom(roomId);
+                  } catch (error) {
+                    console.error("Error deleting actual room from AdminConsole:", error);
+                  }
+                } else {
+                  console.warn('onDeleteActualRoom prop is not provided to AdminConsole');
+                  alert('Delete room functionality is not configured.');
+                }
+              }}
+            />
+          </div>
+        );
+      case 'integrations':
+        return (
+          <div>
+            <CloseButton />
+            <h2 className="text-xl font-semibold mb-4">Chatbot & WhatsApp Integration</h2>
+            <ComingSoon title="Chatbot & WhatsApp Integration" />
+          </div>
+        );
+      case 'discounts':
+        return (
+          <div>
+            <CloseButton />
+            <h2 className="text-xl font-semibold mb-4">Discounts & Offers</h2>
+            <ComingSoon title="Discounts & Offers" />
+          </div>
+        );
+      case 'roles':
+        return (
+          <div>
+            <CloseButton />
+            <h2 className="text-xl font-semibold mb-4">Permission/Roles Setup</h2>
+            <ComingSoon title="Permission/Roles Setup" />
+          </div>
+        );
+      case 'policies':
+        return (
+          <div>
+            <CloseButton />
+            <h2 className="text-xl font-semibold mb-4">Policy & Notice Board</h2>
+            <ComingSoon title="Policy & Notice Board" />
+          </div>
+        );
+      case 'backup':
+        return (
+          <div>
+            <CloseButton />
+            <h2 className="text-xl font-semibold mb-4">Backup & Restore</h2>
+            <ComingSoon title="Backup & Restore" />
+          </div>
+        );
+      case 'tenant-history':
+        return (
+          <div>
+            <CloseButton />
+            <h2 className="text-xl font-semibold mb-4">Tenant History</h2>
+            <ComingSoon title="Tenant History" />
+          </div>
+        );
+      case 'rent-security':
+        return (
+          <div>
+            <CloseButton />
+            <h2 className="text-xl font-semibold mb-4">{module.title}</h2>
+            <RentSecurityTab />
+          </div>
+        );
+      default:
+        return (
+          <div>
+            <CloseButton />
+            <h2 className="text-xl font-semibold mb-4">{module.title}</h2>
+            <ComingSoon title={module.title} />
+          </div>
+        );
+    }
+  };
+
   const tileStyle: React.CSSProperties = {
-    backgroundColor: '#6C8EBF', // Sidebar blue color
+    backgroundColor: '#6C8EBF', 
     color: 'white',
     padding: '20px',
-    borderRadius: '8px',
-    textAlign: 'center' as React.CSSProperties['textAlign'], // Explicitly cast textAlign
-    margin: '10px',
+    borderRadius: '12px',
+    textAlign: 'left',
+    margin: '0', 
+    display: 'flex', 
+    flexDirection: 'column', 
+    alignItems: 'flex-start', 
+    justifyContent: 'space-between', 
+    minHeight: '180px',
+    width: '100%', 
+    cursor: 'pointer',
+    border: '1px solid #5A7FAF',
+    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
   };
 
-  // Updated grid layout for 4x4 structure
-  const gridStyle = {
+  const gridStyle: React.CSSProperties = {
     display: 'grid',
-    gridTemplateColumns: 'repeat(4, 1fr)',
-    gap: '20px',
-    alignItems: 'center',
-    justifyContent: 'center',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: '24px', 
+    padding: '10px',
   };
 
   return (
-    <div className="max-w-5xl mx-auto py-10 px-4">
-      
-      <h1 className="text-3xl font-bold mb-8">Admin Console</h1>
+    <div className="max-w-6xl mx-auto py-10 px-4 sm:px-6 lg:px-8">
+      <h1 className="text-4xl font-bold mb-10 text-center text-gray-800">Admin Console</h1>
+      {isLoadingRoomConfigs && <p className="text-center">Loading room configurations...</p>}
       <div style={gridStyle}>
         {MODULES.map(mod => (
           <button
             key={mod.key}
             style={tileStyle}
-            className="shadow-sm hover:shadow-lg transition border border-gray-200 cursor-pointer flex flex-col items-start p-8 min-h-[160px] w-full text-left focus:outline-none focus:ring-2 focus:ring-blue-300 group"
-            onClick={() => setOpenModule(mod)}
+            className="hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-400 focus:ring-opacity-50 transition-all duration-150 ease-in-out group"
+            onClick={() => handleGenericModuleClick(mod.key)}
             tabIndex={0}
           >
-            <div className="mb-3 group-hover:scale-110 transition-transform text-[#466fa6]">{mod.icon}</div>
-            <div className="font-bold text-lg text-gray-900 mb-1">{mod.title}</div>
-            <div className="text-gray-500 text-sm">{mod.desc}</div>
+            <div className="mb-4 text-blue-100 group-hover:text-white transition-colors duration-150">{React.cloneElement(mod.icon, { className: "w-8 h-8" })}</div>
+            <div>
+              <div className="font-semibold text-xl text-white mb-1 group-hover:text-yellow-300 transition-colors duration-150">{mod.title}</div>
+              <div className="text-blue-100 text-sm group-hover:text-gray-50 transition-colors duration-150">{mod.desc}</div>
+            </div>
           </button>
         ))}
       </div>
-      {/* Modal overlay, rendered above but does not hide the grid */}
-      {openModule && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: '#fff', borderRadius: 16, padding: 32, minWidth: 360, maxWidth: '90vw', maxHeight: '90vh', boxShadow: '0 4px 32px rgba(0,0,0,0.12)', position: 'relative', overflowY: 'auto', zIndex: 101 }}>
-            {/* The close button is now handled by the modal component for rooms */}
-            <div style={{ paddingTop: 24 }}>{renderModulePanel()}</div>
+
+      {openModuleKey && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ background: '#fff', borderRadius: '12px', padding: '25px 30px', width: 'auto', minWidth: '400px', maxWidth: 'calc(100vw - 40px)', maxHeight: 'calc(100vh - 40px)', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', position: 'relative', overflowY: 'auto' }}>
+            {renderModulePanelContent()}
           </div>
         </div>
+      )}
+
+      {showRoomConfigModal && (
+        <RoomConfigurationModal 
+          onClose={handleCloseRoomConfigModal} 
+          existingConfiguration={editingRoomConfig}
+          onSave={handleSaveRoomConfiguration} 
+        />
       )}
     </div>
   );

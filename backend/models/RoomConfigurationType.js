@@ -59,6 +59,12 @@ const roomConfigurationTypeSchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
+  categoryName: {
+    type: String,
+    trim: true,
+    // Optional: Add enum if you want to restrict values from a predefined list on the backend as well
+    // enum: ["Private Mini", "Private Room", "Double Occupancy", "Three Occupancy", "Four Occupancy", "Five Occupancy"],
+  },
 }, { timestamps: true });
 
 // Middleware to ensure converted fields are present if isConvertible is true

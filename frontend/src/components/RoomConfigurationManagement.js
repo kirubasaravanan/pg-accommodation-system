@@ -1,15 +1,24 @@
 import React, { useState, useEffect } from 'react';
 // import axios from 'axios'; // No longer directly using axios for this fetch
-import { fetchRoomConfigurationTypes } from '../api'; // Import the function from api.js
+import { 
+  // fetchRoomConfigurationTypes, // No longer fetched here
+  deleteRoomConfigurationType,
+  addRoomConfigurationType,
+  updateRoomConfigurationType
+} from '../api'; // Import the function from api.js
 import RoomConfigurationModal from './RoomConfigurationModal';
 import ConfirmationModal from './ConfirmationModal'; // For delete confirmation
 // import styles from './RoomConfigurationManagement.module.css'; // Optional: for specific styling
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000'; // Keep for other axios calls if any
+// const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000'; // No longer needed here
 
-const RoomConfigurationManagement = ({ onBack }) => {
-  const [configurations, setConfigurations] = useState([]);
-  const [loading, setLoading] = useState(true);
+const RoomConfigurationManagement = ({ 
+  onBack, 
+  roomConfigurationTypes, // Use this prop for data
+  onRefreshConfigurations // Callback to refresh data in parent
+}) => {
+  // Removed internal states: configurations, loading (for fetch)
+  // Error state is kept for save/delete errors
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
@@ -19,38 +28,14 @@ const RoomConfigurationManagement = ({ onBack }) => {
   const [isDeleteConfirmModalOpen, setIsDeleteConfirmModalOpen] = useState(false);
   const [configToDelete, setConfigToDelete] = useState(null);
 
-  const getToken = () => localStorage.getItem('token');
+  // Removed getToken function
+  // Removed fetchConfigurations function
+  // Removed useEffect hook that called fetchConfigurations
 
-  // Fetch configurations
-  const fetchConfigurations = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const token = getToken();
-      // Use the imported function
-      const res = await fetchRoomConfigurationTypes(token); 
-      // Assuming fetchRoomConfigurationTypes returns a response where res.data is the array
-      // If api.js already extracts .data, then it might just be res
-      // Let's assume for now api.js returns the full axios response object, so res.data is correct.
-      // If it's already processed in api.js, this might need to be just setConfigurations(res)
-      // We will add a log to check this.
-      console.log('RoomConfigurationManagement: Response from fetchRoomConfigurationTypes:', res);
-      setConfigurations(res.data || []); // Ensure it's an array, use res.data based on typical api.js structure
-    } catch (err) {
-      console.error('RoomConfigurationManagement: Error fetching configurations:', err);
-      setError(err.response?.data?.message || err.message || 'Failed to fetch room configurations.');
-    }
-    setLoading(false);
-  };
-
+  // useEffect to log when roomConfigurationTypes prop changes (for debugging and to see if it's populated)
   useEffect(() => {
-    fetchConfigurations();
-  }, []);
-
-  // Add this useEffect to log when configurations state changes
-  useEffect(() => {
-    console.log('RoomConfigurationManagement: configurations state updated:', configurations);
-  }, [configurations]);
+    console.log('RoomConfigurationManagement: roomConfigurationTypes prop updated:', roomConfigurationTypes);
+  }, [roomConfigurationTypes]);
 
   const handleAddNew = () => {
     setEditingConfiguration(null);
@@ -76,30 +61,21 @@ const RoomConfigurationManagement = ({ onBack }) => {
   const handleSaveConfiguration = async (configData, id) => {
     setError('');
     setSuccessMessage('');
-    const token = getToken();
-    // For save/update/delete, direct axios usage is fine if not refactored in api.js
-    // Or, ideally, these would also be functions in api.js
-    const url = id 
-      ? `${API_BASE_URL}/api/room-configuration-types/${id}`
-      : `${API_BASE_URL}/api/room-configuration-types`;
-    const method = id ? 'put' : 'post';
-
+    // Token is now handled by Axios interceptor in api.js
     try {
-      // Using axios directly here, ensure it's imported if other axios calls were removed
-      // It was commented out at the top, let's re-add it or ensure api.js has these methods.
-      // For now, assuming axios is available or these should be moved to api.js too.
-      const axios = require('axios'); // Ensure axios is available for these operations
-      const response = await axios[method](url, configData, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      if (id) {
+        await updateRoomConfigurationType(id, configData); // Token no longer passed
+      } else {
+        await addRoomConfigurationType(configData); // Token no longer passed
+      }
       setSuccessMessage(id ? 'Configuration updated successfully!' : 'Configuration created successfully!');
-      fetchConfigurations(); // Refresh list
+      if (onRefreshConfigurations) {
+        onRefreshConfigurations(); // Refresh data via parent
+      }
       setIsModalOpen(false);
       setEditingConfiguration(null);
     } catch (err) {
       setError(err.response?.data?.message || `Failed to ${id ? 'update' : 'create'} configuration.`);
-      // Keep modal open if there's an error during save
-      // setIsModalOpen(false); 
     }
   };
 
@@ -107,14 +83,13 @@ const RoomConfigurationManagement = ({ onBack }) => {
     if (!configToDelete) return;
     setError('');
     setSuccessMessage('');
-    const token = getToken();
+    // Token is now handled by Axios interceptor in api.js
     try {
-      const axios = require('axios'); // Ensure axios is available
-      await axios.delete(`${API_BASE_URL}/api/room-configuration-types/${configToDelete._id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await deleteRoomConfigurationType(configToDelete._id); // Token no longer passed
       setSuccessMessage('Configuration deleted successfully!');
-      fetchConfigurations(); // Refresh list
+      if (onRefreshConfigurations) {
+        onRefreshConfigurations(); // Refresh data via parent
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to delete configuration.');
     }
@@ -128,9 +103,12 @@ const RoomConfigurationManagement = ({ onBack }) => {
   const buttonStyle = { marginRight: '5px', padding: '5px 10px', cursor: 'pointer' };
   const pageHeaderStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' };
 
-  if (loading) return <div style={{color: 'white'}}>Loading configurations...</div>;
-  // Error display needs to be visible on the blue background
-  // Success message display also needs to be visible
+  // Loading state can be inferred if roomConfigurationTypes is undefined or null,
+  // but NewAdminDashboard should ideally handle overall loading state.
+  // For now, we'll check if roomConfigurationTypes is available.
+  if (!roomConfigurationTypes) {
+    return <div style={{color: 'white'}}>Loading configurations...</div>;
+  }
 
   return (
     <div style={{ padding: '20px', backgroundColor: '#6C8EBF', color: 'white', borderRadius: '8px' }}>
@@ -147,9 +125,10 @@ const RoomConfigurationManagement = ({ onBack }) => {
       {error && <div style={{ color: 'red', backgroundColor: 'white', padding: '10px', marginBottom: '10px', borderRadius: '4px' }}>Error: {error}</div>}
       {successMessage && <div style={{ color: 'green', backgroundColor: 'lightgreen', padding: '10px', marginBottom: '10px', borderRadius: '4px' }}>{successMessage}</div>}
 
-      {configurations.length === 0 && !loading && <p>No room configuration types found. Click "Add New Type" to create one.</p>}
+      {/* Use roomConfigurationTypes prop directly */}
+      {roomConfigurationTypes.length === 0 && <p>No room configuration types found. Click "Add New Type" to create one.</p>}
       
-      {configurations.length > 0 && (
+      {roomConfigurationTypes.length > 0 && (
         <table style={tableStyle} className="configurations-table">
           <thead style={{ backgroundColor: '#f2f2f2' }}>
             <tr>
@@ -162,7 +141,8 @@ const RoomConfigurationManagement = ({ onBack }) => {
             </tr>
           </thead>
           <tbody>
-            {configurations.map((config) => (
+            {/* Use roomConfigurationTypes prop directly */}
+            {roomConfigurationTypes.map((config) => (
               <tr key={config._id} style={{ backgroundColor: 'white' }}>
                 <td style={thTdStyle}>{config.name}</td>
                 <td style={thTdStyle}>{config.baseSharingCapacity}</td>
@@ -195,7 +175,7 @@ const RoomConfigurationManagement = ({ onBack }) => {
         <ConfirmationModal
           isOpen={isDeleteConfirmModalOpen}
           title="Confirm Deletion"
-          message={`Are you sure you want to delete the configuration: "${configToDelete.name}"? This cannot be undone.`}
+          message={`Are you sure you want to delete the configuration: \"${configToDelete.name}\"? This cannot be undone.`}
           onConfirm={confirmDelete}
           onCancel={() => {
             setIsDeleteConfirmModalOpen(false);

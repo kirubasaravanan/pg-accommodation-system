@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
-import axios from 'axios';
-
-const API_BASE_URL = 'http://localhost:5000';
+import { login as apiLogin } from '../api'; // Import the login function from api.js
 
 const Login = ({ onLogin }) => {
   const [username, setUsername] = useState(''); // Changed from email to username
@@ -14,8 +12,8 @@ const Login = ({ onLogin }) => {
     setLoading(true);
     setError('');
     try {
-      // Send username and password to the backend
-      const res = await axios.post(`${API_BASE_URL}/api/auth/login`, { username, password });
+      // Use the login function from api.js
+      const res = await apiLogin({ username, password }); // Pass username and password
       localStorage.setItem('token', res.data.token);
       // Optionally, store other user info like role or username if returned by backend
       if (res.data.username) {
@@ -29,7 +27,7 @@ const Login = ({ onLogin }) => {
       setError(
         err.response && err.response.data && err.response.data.error
           ? err.response.data.error
-          : 'Login failed.'
+          : 'Login failed. Please check your credentials or network.' // More specific error
       );
     }
     setLoading(false);

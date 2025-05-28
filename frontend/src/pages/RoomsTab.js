@@ -131,7 +131,7 @@ const RoomsTab = ({
           <th>Price (per occupant)</th>
           <th>Max Occupancy</th>
           <th>Current Occupancy</th>
-          <th>Vacant Spots</th>
+          <th>Vacant Beds</th> {/* Renamed from Vacant Spots */}
           <th>Availability</th> {/* New Column */}
           <th>Tenants</th>
           <th>Actions</th>
@@ -139,18 +139,32 @@ const RoomsTab = ({
       </thead>
       <tbody>
         {(rooms || []).map((room) => {
-          if (!room) return null; // Add a guard for undefined room object
-          const tenantsInRoom = getTenantsForRoom ? getTenantsForRoom(room.name) : [];
-          // Ensure currentOccupancy calculation considers only active tenants if not already handled by getTenantsForRoom or room.occupancy.current
-          // For simplicity, we'll assume room.occupancy.current is accurate for active tenants.
-          // If room.occupancy.current is not reliable, it should be:
-          // const activeTenantsInRoom = tenantsInRoom.filter(t => t.isActive !== false); // or t.status === 'Active'
-          // const currentOccupancy = activeTenantsInRoom.length;
-          const currentOccupancy = typeof room.occupancy.current === 'number' ? room.occupancy.current : (tenantsInRoom.filter(t => t.isActive !== false).length || 0);
+          if (!room || !room._id) return null; // Add a guard for undefined room object or missing _id
+          const tenantsInRoom = getTenantsForRoom ? getTenantsForRoom(room._id) : []; // Use room._id
+          
+          // --- BEGIN LOGGING ---
+          console.log(`[RoomsTab] Processing room: ${room.name} (ID: ${room._id})`);
+          console.log(`[RoomsTab] Tenants for room ${room.name}:`, JSON.stringify(tenantsInRoom, null, 2));
+          tenantsInRoom.forEach(t => console.log(`[RoomsTab] Tenant details: ID: ${t._id}, Name: ${t.name}, Room from tenant object: ${JSON.stringify(t.room)}`));
+          // --- END LOGGING ---
 
-          const maxOccupancy = typeof room.occupancy.max === 'number' ? room.occupancy.max : 0;
-          const vacantSpots = maxOccupancy - currentOccupancy;
-          const overOccupied = currentOccupancy > maxOccupancy;
+          // Ensure maxOccupancy is a non-negative number, defaulting to 0
+          const maxOccupancy = (room.occupancy && typeof room.occupancy.max === 'number' && room.occupancy.max >= 0) 
+                             ? room.occupancy.max 
+                             : 0;
+
+          // Ensure currentOccupancy is a non-negative number
+          // It should ideally not exceed maxOccupancy if data is consistent
+          let currentOccupancy = (room.occupancy && typeof room.occupancy.current === 'number' && room.occupancy.current >= 0)
+                                   ? room.occupancy.current
+                                   : tenantsInRoom.filter(t => t.status === 'Active').length;
+          
+          // Clamp currentOccupancy to be at most maxOccupancy, though ideally backend should ensure this
+          currentOccupancy = Math.min(currentOccupancy, maxOccupancy);
+
+          // Calculate vacantBeds, ensuring it's not negative
+          const vacantBeds = Math.max(0, maxOccupancy - currentOccupancy);
+          const overOccupied = currentOccupancy > maxOccupancy; // This should ideally be false with the clamping above
 
           let availabilityStatus = '';
           let earliestVacationDateStr = '';
@@ -169,7 +183,7 @@ const RoomsTab = ({
           if (earliestVacationDateStr && earliestVacationDateStr !== 'Invalid Date' && earliestVacationDateStr !== 'Error') {
             // If a tenant is vacating, the room will be available soon.
             availabilityStatus = `Available Soon (tentatively from ${earliestVacationDateStr})`;
-          } else if (vacantSpots > 0) {
+          } else if (vacantBeds > 0) {
             availabilityStatus = 'Available';
           } else {
             availabilityStatus = 'Occupied';
@@ -178,18 +192,19 @@ const RoomsTab = ({
           return (
             <tr key={room._id} style={overOccupied ? { background: '#ffeaea' } : {}}>
               <td>{room.name || 'N/A'}</td>
-              <td>{room.roomConfigurationType && typeof room.roomConfigurationType === 'object' ? room.roomConfigurationType.name : 'N/A'}</td>
+              <td>{room.roomConfigurationType && typeof room.roomConfigurationType === 'object' ? room.roomConfigurationType.name : (typeof room.roomConfigurationType === 'string' ? room.roomConfigurationType : 'N/A')}</td>
               <td>{room.location || 'N/A'}</td>
-              <td>₹{room.price}</td>
-              <td>{maxOccupancy || 'N/A'}</td>
+              <td>₹{typeof room.price === 'number' ? room.price : 'N/A'}</td>
+              <td>{maxOccupancy}</td>
               <td>{currentOccupancy}</td>
-              <td>{vacantSpots < 0 ? 0 : vacantSpots}</td>
+              <td>{vacantBeds}</td>
               <td style={{ fontWeight: availabilityStatus.startsWith('Available Soon') ? 'bold' : 'normal', color: availabilityStatus.startsWith('Available Soon') ? 'orange' : (availabilityStatus === 'Available' ? 'green' : 'red') }}>
                 {availabilityStatus}
               </td>
               <td>
                 {(tenantsInRoom || []).map(tenant => {
-                  const isActiveTenant = tenant.isActive !== false; 
+                  if (!tenant || !tenant._id) return null; // Guard for invalid tenant object
+                  const isActiveTenant = tenant.status === 'Active'; 
                   const showAsVacating = isActiveTenant && tenant.intendedVacationDate;
                   
                   const vacationDateDisplay = tenant.intendedVacationDate ? formatDateSafely(tenant.intendedVacationDate) : '';

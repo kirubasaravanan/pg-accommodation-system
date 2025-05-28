@@ -5,8 +5,10 @@ const TenantSchema = new mongoose.Schema({
   contact: { type: String, required: true, unique: true },
   email: { type: String, required: true },
   aadharNumber: { type: String, unique: true, sparse: true }, // Added Aadhar Number
+  dob: { type: Date }, // Added Date of Birth
+  bedNumber: { type: String }, // Added Bed Number (e.g., "1", "A1")
   room: { type: String, default: '' }, // room name or id
-  status: { type: String, enum: ['Active', 'Inactive'], default: 'Active' },
+  status: { type: String, enum: ['Active', 'Inactive', 'Pending Allocation'], default: 'Active' }, // Added 'Pending Allocation'
   moveInDate: { type: Date },
   moveOutDate: { type: Date },
   intendedVacationDate: { type: Date, default: null }, // New field for notice of vacation

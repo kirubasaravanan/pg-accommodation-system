@@ -1,10 +1,67 @@
 .main-sidebar {
-  width: 200px;
-  background: var(--background-color);
-  border-right: 1px solid #ddd;
-  padding: 16px;
+  width: 250px; /* Adjusted width */
+  background-color: #343a40; /* Dark background from image */
+  border-right: 1px solid #495057; /* Darker border */
+  padding: 16px 0; /* Vertical padding, no side padding for full-width links */
+  height: 100vh; /* Full viewport height */
+  display: flex;
+  flex-direction: column;
+  color: #f8f9fa; /* Light base text color */
 }
-.main-sidebar ul { list-style: none; padding: 0; margin: 0; }
-.main-sidebar li { margin-bottom: 12px; }
-.main-sidebar a { color: var(--primary-color); text-decoration: none; }
-.main-sidebar a.active { font-weight: bold; }
+
+.main-sidebar ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+}
+
+.main-sidebar li {
+  margin-bottom: 0; /* Remove default margin if needed for tighter packing */
+}
+
+.main-sidebar a {
+  color: #adb5bd; /* Lighter gray for non-active links */
+  text-decoration: none;
+  display: block; /* Make links take full width of li */
+  padding: 12px 20px; /* Padding for links */
+  transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+  border-left: 3px solid transparent; /* For active indicator */
+}
+
+.main-sidebar a:hover {
+  background-color: #495057; /* Hover background */
+  color: #ffffff; /* White text on hover */
+  border-left-color: #5f676d; /* Subtle hover border */
+}
+
+.main-sidebar a.active {
+  background-color: #007bff; /* Bootstrap primary blue, or use var(--primary-color) if preferred and it's dark enough */
+  /* background-color: var(--primary-color); */ /* Alternative: use theme's primary color */
+  color: #ffffff; /* White text for active link */
+  font-weight: bold;
+  border-left-color: #ffffff; /* Prominent left border for active item */
+}
+
+.sidebar-icon {
+  margin-right: 10px;
+  width: 20px;
+  display: inline-block;
+  text-align: center;
+  vertical-align: middle; /* Align icons better with text */
+}
+
+.sidebar-logout-button {
+  background: none;
+  border: none;
+  color: #333;
+  cursor: pointer;
+  font-size: inherit; /* Match link font size */
+  font-family: inherit; /* Match link font family */
+  width: 100%; /* Make button take full width of li */
+  text-align: left; /* Align text to the left like links */
+}
+
+.sidebar-logout-button:focus {
+  outline: none; /* Optional: remove focus outline if not desired */
+}
