@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import styles from '../pages/NewAdminDashboard.module.css'; 
-import { fetchUsers, deleteUser } from '../api'; // Import deleteUser
+import {
+  deleteUser,
+  apiClientInstance as apiClient // Use the exported instance
+} from '../api';
 import AddUserForm from './AddUserForm';
 import EditUserForm from './EditUserForm';
 
@@ -35,18 +38,32 @@ const UserManagementConsole = ({ onBack }) => {
   const loadUsers = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    console.log('UserManagementConsole: apiClient.defaults.baseURL:', apiClient.defaults.baseURL); // Added log
+    console.log('UserManagementConsole: Attempting to load users via apiClient.get(\'/api/users\')'); // Added log
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setError('Authentication token not found. Please log in.');
-        setIsLoading(false);
-        return;
-      }
-      const response = await fetchUsers(token);
+      // const token = localStorage.getItem('token'); // Token is now handled by interceptor
+      // if (!token) {
+      //   setError('Authentication token not found. Please log in.');
+      //   setIsLoading(false);
+      //   return;
+      // }
+      const response = await apiClient.get('/api/users'); // Use apiClient and relative path
+      console.log('UserManagementConsole: Users fetched successfully', response.data); // Added log
       setUsers(response.data); 
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to fetch users. Please ensure you are logged in as an admin.');
-      console.error('Error fetching users:', err);
+      let errorMessage = 'Failed to fetch users.';
+      if (err.response) {
+        errorMessage = err.response.data?.error || `Request failed with status ${err.response.status}`;
+        console.error('UserManagementConsole: Error fetching users - Response:', err.response);
+      } else if (err.request) {
+        errorMessage = 'No response received from server. Check network or server status.';
+        console.error('UserManagementConsole: Error fetching users - Request:', err.request);
+      } else {
+        errorMessage = err.message;
+        console.error('UserManagementConsole: Error fetching users - Message:', err.message);
+      }
+      setError(errorMessage);
+      // console.error('Error fetching users:', err); // Original simpler log
     }
     setIsLoading(false);
   }, []); // Empty dependency array means this function is created once
@@ -84,8 +101,8 @@ const UserManagementConsole = ({ onBack }) => {
   const confirmDeleteUser = async () => {
     if (!deletingUser) return;
     try {
-      const token = localStorage.getItem('token');
-      await deleteUser(deletingUser._id, token);
+      // const token = localStorage.getItem('token'); // Token handled by interceptor
+      await apiClient.delete(`/api/users/${deletingUser._id}`); // Use apiClient and relative path
       setShowDeleteConfirm(false);
       setDeletingUser(null);
       loadUsers(); // Refresh list
@@ -123,7 +140,7 @@ const UserManagementConsole = ({ onBack }) => {
       {showAddUserForm && !showEditUserForm && !showDeleteConfirm && (
         <div style={{ border: '1px solid #ddd', padding: '20px', marginBottom: '20px', borderRadius: '8px' }}>
           <AddUserForm 
-            token={localStorage.getItem('token')} 
+            // token={localStorage.getItem('token')} // Token handled by interceptor
             onUserAdded={handleUserAdded} 
           />
         </div>
@@ -132,7 +149,7 @@ const UserManagementConsole = ({ onBack }) => {
       {showEditUserForm && editingUser && (
         <div style={{ border: '1px solid #ddd', padding: '20px', marginBottom: '20px', borderRadius: '8px' }}>
           <EditUserForm
-            token={localStorage.getItem('token')}
+            // token={localStorage.getItem('token')} // Token handled by interceptor
             userToEdit={editingUser}
             onUserUpdated={handleUserUpdated}
             onCancel={handleCancelEdit}

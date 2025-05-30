@@ -1,16 +1,18 @@
 import React, { useContext, useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserContext } from '../context/UserContext';
-import { Home, Users, BedDouble, IndianRupee, Percent, ShieldCheck, ClipboardList, PlugZap, DatabaseBackup, Building } from 'lucide-react';
+import { Home, Users, BedDouble, IndianRupee, Percent, ShieldCheck, ClipboardList, PlugZap, DatabaseBackup, Building, Edit3, PlusCircle, Trash2 } from 'lucide-react'; // Added Edit3, PlusCircle, Trash2
 import UserManagement from './UserManagement';
 import ComingSoon from './ComingSoon';
 import RoomConfigurationModal from '../components/RoomConfigurationModal';
 import RentSecurityTab from './RentSecurityTab';
 import RoomsAndRentSetup from '../components/RoomsAndRentSetup';
+import styles from './AdminConsole.module.css'; // Ensure this is imported
 import { 
   addRoomConfigurationType, 
   fetchRoomConfigurationTypes, 
   updateRoomConfigurationType, 
+  deleteRoomConfigurationType, // Import the delete function
 } from '../api';
 
 // Define a basic RoomType, adjust as per your actual room model
@@ -32,6 +34,11 @@ interface AdminConsoleProps {
   onAddActualRoom?: (roomData: Omit<RoomType, '_id' | 'occupancy'> & { occupancy: { max: number } }) => Promise<void>;
   onEditActualRoom?: (room: RoomType) => void; 
   onDeleteActualRoom?: (roomId: string) => Promise<void>;
+
+  // New props for room configuration types
+  roomConfigurationTypesFromParent: RoomConfigType[];
+  isLoadingRoomConfigsFromParent: boolean;
+  onRefreshRoomConfigurationTypes: () => Promise<void>;
 }
 
 interface RoomConfigType {
@@ -124,42 +131,44 @@ const AdminConsole: React.FC<AdminConsoleProps> = ({
   onAddActualRoom,
   onEditActualRoom,
   onDeleteActualRoom,
+  // Destructure new props
+  roomConfigurationTypesFromParent,
+  isLoadingRoomConfigsFromParent,
+  onRefreshRoomConfigurationTypes,
 }) => {
   const navigate = useNavigate();
   const { user } = useContext(UserContext) as { user: any };
   const [openModuleKey, setOpenModuleKey] = useState<string | null>(null);
-  const [roomConfigs, setRoomConfigs] = useState<RoomConfigType[]>([]);
+  // Removed: const [roomConfigs, setRoomConfigs] = useState<RoomConfigType[]>([]);
   const [editingRoomConfig, setEditingRoomConfig] = useState<RoomConfigType | null>(null);
   const [showRoomConfigModal, setShowRoomConfigModal] = useState(false);
-  const [isLoadingRoomConfigs, setIsLoadingRoomConfigs] = useState(false);
+  // Removed: const [isLoadingRoomConfigs, setIsLoadingRoomConfigs] = useState(false);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [configToDelete, setConfigToDelete] = useState<RoomConfigType | null>(null);
+  const [roomConfigOperationError, setRoomConfigOperationError] = useState<string | null>(null);
 
-  const loadRoomConfigs = useCallback(async () => {
-    setIsLoadingRoomConfigs(true);
-    try {
-      const response = await fetchRoomConfigurationTypes();
-      setRoomConfigs(response.data || []);
-    } catch (error) {
-      console.error("Error fetching room configuration types:", error);
-    } finally {
-      setIsLoadingRoomConfigs(false);
-    }
-  }, []);
+
+  // Removed: loadRoomConfigs useCallback
 
   useEffect(() => {
-    if (user && user.role === 'admin') {
-      loadRoomConfigs();
-    } else if (!user) {
+    if (!user) {
+      console.log('[AdminConsole] No user context, potentially redirect to login.');
+      // Consider if navigation here is appropriate or should be handled by a parent router/auth guard
       // navigate('/login'); 
-    } else if (user.role !== 'admin'){
-        navigate('/dashboard');
+    } else if (user.role !== 'admin') {
+      console.log('[AdminConsole] User is not admin, navigating to dashboard. User:', user.username, 'Role:', user.role);
+      navigate('/dashboard');
     }
-  }, [user, navigate, loadRoomConfigs]);
+    // Initial loading of room configs is now handled by the parent.
+  }, [user, navigate]);
   
   const escListener = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       setOpenModuleKey(null);
       setShowRoomConfigModal(false);
       setEditingRoomConfig(null);
+      setShowDeleteConfirmModal(false); // Close delete confirm modal on ESC
+      setConfigToDelete(null);
     }
   }, []);
 
@@ -168,12 +177,12 @@ const AdminConsole: React.FC<AdminConsoleProps> = ({
       window.addEventListener('keydown', escListener);
       return () => window.removeEventListener('keydown', escListener);
     }
-  }, [openModuleKey, showRoomConfigModal, escListener]);
+  }, [openModuleKey, showRoomConfigModal, escListener, showDeleteConfirmModal]); // Added showDeleteConfirmModal
 
   const handleOpenRoomConfigModal = (config: RoomConfigType | null = null) => {
     setEditingRoomConfig(config);
     setShowRoomConfigModal(true);
-    setOpenModuleKey(null); 
+    // setOpenModuleKey(null); // Keep the module key if we are showing the modal as part of the module view
   };
 
   const handleCloseRoomConfigModal = () => {
@@ -182,32 +191,59 @@ const AdminConsole: React.FC<AdminConsoleProps> = ({
   };
 
   const handleSaveRoomConfiguration = async (configData: Omit<RoomConfigType, '_id'>, configId?: string) => {
+    setRoomConfigOperationError(null); // Clear previous errors
     try {
       if (configId) {
         await updateRoomConfigurationType(configId, configData);
       } else {
         await addRoomConfigurationType(configData);
       }
-      loadRoomConfigs(); 
+      await onRefreshRoomConfigurationTypes(); // Call parent's refresh
       handleCloseRoomConfigModal();
     } catch (error) {
-      console.error("Error saving room configuration:", error);
-      alert(`Failed to save room configuration: ${error.response?.data?.error || error.message}`);
+      console.error("Error saving room configuration:", error.response ? error.response.data : error.message);
+      const errorMessage = error.response?.data?.message || `Failed to save room configuration.`;
+      setRoomConfigOperationError(errorMessage);
+      throw error; // Re-throw for modal if it handles it
     }
   };
   
   const handleGenericModuleClick = (moduleKey: string) => {
+    setRoomConfigOperationError(null); // Clear errors when switching modules or opening one
     if (moduleKey === 'rooms') {
-      handleOpenRoomConfigModal(); 
-    } else {
-      setOpenModuleKey(moduleKey);
-      setShowRoomConfigModal(false); 
+      // If data is not loaded and not currently loading, try to refresh.
+      if (!roomConfigurationTypesFromParent || roomConfigurationTypesFromParent.length === 0 && !isLoadingRoomConfigsFromParent) {
+        console.log('[AdminConsole] "rooms" module clicked. No configs from parent or empty, and not loading. Triggering onRefreshRoomConfigurationTypes. Timestamp:', Date.now());
+        onRefreshRoomConfigurationTypes(); // Request parent to refresh
+      }
     }
+    setOpenModuleKey(moduleKey);
+    setShowRoomConfigModal(false); // Ensure modal is closed if switching modules
   };
   
   const handleCloseGenericModule = () => {
     setOpenModuleKey(null);
   };
+
+  const handleDeleteRoomConfig = async (configId: string) => {
+    setRoomConfigOperationError(null); // Clear previous errors
+    try {
+      await deleteRoomConfigurationType(configId);
+      await onRefreshRoomConfigurationTypes(); // Call parent's refresh
+      setShowDeleteConfirmModal(false);
+      setConfigToDelete(null);
+    } catch (error) {
+      console.error("Error deleting room configuration type:", error);
+      const errorMessage = error.response?.data?.message || "Failed to delete room configuration type.";
+      setRoomConfigOperationError(errorMessage);
+    }
+  };
+
+  const openDeleteConfirm = (config: RoomConfigType) => {
+    setConfigToDelete(config);
+    setShowDeleteConfirmModal(true);
+  };
+
 
   const renderModulePanelContent = (): React.ReactElement | null => {
     if (!openModuleKey) return null;
@@ -217,11 +253,7 @@ const AdminConsole: React.FC<AdminConsoleProps> = ({
     const CloseButton = () => (
       <button
         onClick={handleCloseGenericModule}
-        style={{
-          background: 'none', border: 'none', color: '#333',
-          fontSize: '24px', fontWeight: 'bold', cursor: 'pointer',
-          position: 'absolute', top: '15px', right: '15px'
-        }}
+        className={styles.closeButton} // Use CSS module style
         title="Close (ESC)"
       >
         &times;
@@ -232,14 +264,91 @@ const AdminConsole: React.FC<AdminConsoleProps> = ({
       case 'users':
         return <UserManagement onClose={handleCloseGenericModule} />;
       
+      case 'rooms': // Room Configuration Types
+        console.log(`[AdminConsole] RENDERING "rooms" module panel. Timestamp: ${Date.now()}`);
+        console.log('[AdminConsole] Current isLoadingRoomConfigsFromParent state:', isLoadingRoomConfigsFromParent);
+        console.log('[AdminConsole] Current roomConfigurationTypesFromParent state (length):', roomConfigurationTypesFromParent?.length, 'Data:', roomConfigurationTypesFromParent);
+
+        return (
+          <div>
+            <div className={styles.moduleHeader}> {/* Apply CSS module style */}
+              <h2 className="text-xl font-semibold">Room Configuration Types</h2>
+              <div>
+                <button
+                  onClick={() => handleOpenRoomConfigModal(null)}
+                  className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded inline-flex items-center"
+                >
+                  <PlusCircle size={18} className="mr-2" /> Add New Type
+                </button>
+                <CloseButton />
+              </div>
+            </div>
+            {roomConfigOperationError && <p className="text-red-500 bg-red-100 p-3 my-3 rounded-md">Error: {roomConfigOperationError}</p>}
+            {isLoadingRoomConfigsFromParent ? (
+              <p>Loading configurations...</p>
+            ) : (!roomConfigurationTypesFromParent || roomConfigurationTypesFromParent.length === 0) ? (
+              <p>No room configuration types found. Click "Add New Type" to create one.</p>
+            ) : (
+              <table className="min-w-full bg-white">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="px-6 py-3 border-b-2 border-gray-300 text-left text-xs leading-4 font-medium text-gray-600 uppercase tracking-wider">Name</th>
+                    <th className="px-6 py-3 border-b-2 border-gray-300 text-left text-xs leading-4 font-medium text-gray-600 uppercase tracking-wider">Base Sharing</th>
+                    <th className="px-6 py-3 border-b-2 border-gray-300 text-left text-xs leading-4 font-medium text-gray-600 uppercase tracking-wider">Base Rent</th>
+                    <th className="px-6 py-3 border-b-2 border-gray-300 text-left text-xs leading-4 font-medium text-gray-600 uppercase tracking-wider">AC Status</th>
+                    <th className="px-6 py-3 border-b-2 border-gray-300 text-left text-xs leading-4 font-medium text-gray-600 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {roomConfigurationTypesFromParent.map(config => (
+                    <tr key={config._id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-no-wrap border-b border-gray-200">{config.name}</td>
+                      <td className="px-6 py-4 whitespace-no-wrap border-b border-gray-200">{config.baseSharingCapacity}</td>
+                      <td className="px-6 py-4 whitespace-no-wrap border-b border-gray-200">{config.baseRent}</td>
+                      <td className="px-6 py-4 whitespace-no-wrap border-b border-gray-200">{config.acStatus}</td>
+                      <td className="px-6 py-4 whitespace-no-wrap border-b border-gray-200">
+                        <button 
+                          onClick={() => handleOpenRoomConfigModal(config)} 
+                          className="text-indigo-600 hover:text-indigo-900 mr-3"
+                          title="Edit"
+                        >
+                          <Edit3 size={18} />
+                        </button>
+                        <button 
+                          onClick={() => openDeleteConfirm(config)} 
+                          className="text-red-600 hover:text-red-900"
+                          title="Delete"
+                        >
+                           <Trash2 size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        );
+
       case 'room-instance-management':
+        console.log(`[AdminConsole] RENDERING 'room-instance-management' module panel. Timestamp: ${Date.now()}`);
+        console.log('[AdminConsole] actualRoomsFromParent PROPS (length):', actualRoomsFromParent.length);
+        if (actualRoomsFromParent.length > 0) {
+            console.log('[AdminConsole] actualRoomsFromParent first room sample name:', actualRoomsFromParent[0]?.name, 'ID:', actualRoomsFromParent[0]?._id);
+            console.log('[AdminConsole] Full actualRoomsFromParent data:', JSON.stringify(actualRoomsFromParent));
+        } else {
+            console.log('[AdminConsole] actualRoomsFromParent is empty.');
+        }
+        // Also log the rooms prop passed to RoomsAndRentSetup
+        console.log('[AdminConsole] Passing to RoomsAndRentSetup rooms (length):', actualRoomsFromParent.length);
+
         return (
           <div>
             <CloseButton />
             <RoomsAndRentSetup
               onBack={handleCloseGenericModule}
               rooms={actualRoomsFromParent}
-              roomConfigurationTypes={roomConfigs}
+              roomConfigurationTypes={roomConfigurationTypesFromParent} // Use prop
               handleAddRoom={async (roomData) => {
                 if (onAddActualRoom) {
                   try {
@@ -302,15 +411,6 @@ const AdminConsole: React.FC<AdminConsoleProps> = ({
       case 'policies':
         return (
           <div>
-            <CloseButton />
-            <h2 className="text-xl font-semibold mb-4">Policy & Notice Board</h2>
-            <ComingSoon title="Policy & Notice Board" />
-          </div>
-        );
-      case 'backup':
-        return (
-          <div>
-            <CloseButton />
             <h2 className="text-xl font-semibold mb-4">Backup & Restore</h2>
             <ComingSoon title="Backup & Restore" />
           </div>
@@ -340,43 +440,19 @@ const AdminConsole: React.FC<AdminConsoleProps> = ({
           </div>
         );
     }
-  };
-
-  const tileStyle: React.CSSProperties = {
-    backgroundColor: '#6C8EBF', 
-    color: 'white',
-    padding: '20px',
-    borderRadius: '12px',
-    textAlign: 'left',
-    margin: '0', 
-    display: 'flex', 
-    flexDirection: 'column', 
-    alignItems: 'flex-start', 
-    justifyContent: 'space-between', 
-    minHeight: '180px',
-    width: '100%', 
-    cursor: 'pointer',
-    border: '1px solid #5A7FAF',
-    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-  };
-
-  const gridStyle: React.CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-    gap: '24px', 
-    padding: '10px',
+    return null; // Add a default return for renderModulePanelContent
   };
 
   return (
     <div className="max-w-6xl mx-auto py-10 px-4 sm:px-6 lg:px-8">
       <h1 className="text-4xl font-bold mb-10 text-center text-gray-800">Admin Console</h1>
-      {isLoadingRoomConfigs && <p className="text-center">Loading room configurations...</p>}
-      <div style={gridStyle}>
+      {/* Parent component should manage overall loading state; this local loading is for when module is open */}
+      {/* Example: {isLoadingRoomConfigsFromParent && openModuleKey === null && <p className="text-center">Loading admin data...</p>} */}
+      <div className={styles.grid}> {/* Use CSS module style */}
         {MODULES.map(mod => (
           <button
             key={mod.key}
-            style={tileStyle}
-            className="hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-400 focus:ring-opacity-50 transition-all duration-150 ease-in-out group"
+            className={`${styles.tile} hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-400 focus:ring-opacity-50 transition-all duration-150 ease-in-out group`}
             onClick={() => handleGenericModuleClick(mod.key)}
             tabIndex={0}
           >
@@ -389,20 +465,51 @@ const AdminConsole: React.FC<AdminConsoleProps> = ({
         ))}
       </div>
 
-      {openModuleKey && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-          <div style={{ background: '#fff', borderRadius: '12px', padding: '25px 30px', width: 'auto', minWidth: '400px', maxWidth: 'calc(100vw - 40px)', maxHeight: 'calc(100vh - 40px)', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', position: 'relative', overflowY: 'auto' }}>
+      {openModuleKey && !showRoomConfigModal && ( // Ensure module panel doesn't overlap with room config modal if it's managed separately
+        <div className={styles.modulePanelOverlay}>
+          <div className={styles.modulePanel}>
             {renderModulePanelContent()}
           </div>
         </div>
       )}
 
       {showRoomConfigModal && (
-        <RoomConfigurationModal 
-          onClose={handleCloseRoomConfigModal} 
-          existingConfiguration={editingRoomConfig}
-          onSave={handleSaveRoomConfiguration} 
-        />
+        <div className={styles.modalOverlay}>
+          <RoomConfigurationModal 
+            onClose={handleCloseRoomConfigModal} 
+            existingConfiguration={editingRoomConfig}
+            onSave={handleSaveRoomConfiguration} 
+          />
+        </div>
+      )}
+
+      {showDeleteConfirmModal && configToDelete && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.confirmationDialogContent} > {/* Apply CSS module style */}
+            <h3 className="text-lg font-medium leading-6 text-gray-900">Confirm Deletion</h3>
+            <div className="mt-2">
+              <p className="text-sm text-gray-500">
+                Are you sure you want to delete the room configuration type "{configToDelete.name}"? This action cannot be undone.
+              </p>
+            </div>
+            <div className="mt-4">
+              <button
+                type="button"
+                className="inline-flex justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 mr-3"
+                onClick={() => handleDeleteRoomConfig(configToDelete._id)}
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                className="inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                onClick={() => { setShowDeleteConfirmModal(false); setConfigToDelete(null); }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

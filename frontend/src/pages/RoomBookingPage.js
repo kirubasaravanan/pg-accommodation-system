@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styles from './RoomBookingPage.module.css';
 import { fetchRooms, createBooking } from '../api';
 
-const RoomBookingPage = () => {
+const RoomBookingPage = ({ rooms: allRoomsFromDashboard, tenants, roomConfigurationTypes }) => {
   const [availableRooms, setAvailableRooms] = useState([]);
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [bookingDetails, setBookingDetails] = useState({
@@ -15,20 +15,41 @@ const RoomBookingPage = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const loadAvailableRooms = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetchRooms(); // API call
-        setAvailableRooms(response.data);
-        setError(null);
-      } catch (err) {
-        setError(err.message || 'Failed to load available rooms.');
-        setAvailableRooms([]);
-      }
+    // Use the rooms passed from NewAdminDashboard if available
+    // Otherwise, fetch them (though ideally, they should always be passed down)
+    if (allRoomsFromDashboard && allRoomsFromDashboard.length > 0) {
+      // Filter for rooms that are not fully occupied or have a status indicating availability
+      // This is a basic filter; more complex logic might be needed based on your data model
+      const filtered = allRoomsFromDashboard.filter(room => 
+        room.occupancy && room.occupancy.current < room.occupancy.max
+        // Add other conditions for availability if necessary, e.g., room.status === 'available'
+      );
+      setAvailableRooms(filtered);
+      setError(null);
       setIsLoading(false);
-    };
-    loadAvailableRooms();
-  }, []);
+    } else if (!allRoomsFromDashboard) { // Only fetch if not passed as prop
+      const loadAvailableRooms = async () => {
+        setIsLoading(true);
+        try {
+          const response = await fetchRooms(); // API call
+          const fetchedRooms = response.data || [];
+          const filtered = fetchedRooms.filter(room => 
+            room.occupancy && room.occupancy.current < room.occupancy.max
+          );
+          setAvailableRooms(filtered);
+          setError(null);
+        } catch (err) {
+          setError(err.message || 'Failed to load available rooms.');
+          setAvailableRooms([]);
+        }
+        setIsLoading(false);
+      };
+      loadAvailableRooms();
+    } else {
+      setAvailableRooms([]); // Passed as prop but empty
+      setIsLoading(false);
+    }
+  }, [allRoomsFromDashboard]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -90,13 +111,27 @@ const RoomBookingPage = () => {
           {isLoading && <p>Loading rooms...</p>}
           {!isLoading && availableRooms.length === 0 && !error && <p>No rooms available currently.</p>}
           {error && <p className={styles.errorText}>{error}</p>}
-          {availableRooms.map(room => (
-            <div key={room._id} className={`${styles.roomCard} ${selectedRoom && selectedRoom._id === room._id ? styles.selected : ''}`} onClick={() => handleRoomSelect(room)}>
-              <h3>{room.name}</h3>
-              <p>Type: {room.roomConfigurationType?.name || 'N/A'}</p>
-              <p>Price: ₹{room.price}/month</p>
-            </div>
-          ))}
+          {availableRooms.map(room => {
+            // Resolve roomConfigurationType name
+            let configTypeName = 'N/A';
+            if (room.roomConfigurationType && roomConfigurationTypes && roomConfigurationTypes.length > 0) {
+              const config = typeof room.roomConfigurationType === 'string' 
+                ? roomConfigurationTypes.find(rc => rc._id === room.roomConfigurationType)
+                : roomConfigurationTypes.find(rc => rc._id === room.roomConfigurationType._id);
+              if (config) {
+                configTypeName = config.name;
+              }
+            }
+
+            return (
+              <div key={room._id} className={`${styles.roomCard} ${selectedRoom && selectedRoom._id === room._id ? styles.selected : ''}`} onClick={() => handleRoomSelect(room)}>
+                <h3>{room.name}</h3>
+                <p>Type: {configTypeName}</p>
+                <p>Price: ₹{room.price}/month</p>
+                <p>Available Beds: {room.occupancy ? room.occupancy.max - room.occupancy.current : 'N/A'}</p>
+              </div>
+            );
+          })}
           {/* <div className={styles.roomCardPlaceholder}>Room Card 1 (Placeholder)</div>
           <div className={styles.roomCardPlaceholder}>Room Card 2 (Placeholder)</div> */}
         </div>

@@ -1,9 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+import React, { useEffect, useState, useCallback } from 'react'; // Added useCallback
 import { useNavigate } from 'react-router-dom';
-import ConfirmationModal from '../../src/components/ConfirmationModal'; // Added import
-
-const API_BASE_URL = 'http://192.168.x.x:5000';
+import ConfirmationModal from '../../src/components/ConfirmationModal';
+import { apiClientInstance } from '../api'; // Import apiClientInstance
 
 const ROLES = ['admin', 'staff', 'accountant', 'support'];
 
@@ -12,30 +10,28 @@ const UserManagement = ({ onClose }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ name: '', email: '', role: 'staff', password: '' });
+  const [form, setForm] = useState({ username: '', name: '', email: '', role: 'staff', password: '' }); // Added username to form state
   const [editingId, setEditingId] = useState(null);
   const [success, setSuccess] = useState('');
-  const [isModalOpen, setIsModalOpen] = useState(false); // Added state for modal
-  const [userToDeleteId, setUserToDeleteId] = useState(null); // Added state for user ID to delete
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [userToDeleteId, setUserToDeleteId] = useState(null);
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => { // Wrapped in useCallback
     setLoading(true);
     setError('');
     try {
-      const token = localStorage.getItem('token');
-      const res = await axios.get(`${API_BASE_URL}/api/users`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await apiClientInstance.get('/api/users'); // Use apiClientInstance
       setUsers(res.data);
     } catch (err) {
       setError('Failed to fetch users.');
+      console.error("Fetch users error:", err); // Added console.error for better debugging
     }
     setLoading(false);
-  };
+  }, []); // Added dependency array for useCallback
 
   useEffect(() => {
     fetchUsers();
-  }, []);
+  }, [fetchUsers]); // Added fetchUsers to dependency array
 
   const handleChange = e => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -48,57 +44,48 @@ const UserManagement = ({ onClose }) => {
     setError('');
     setSuccess('');
     try {
-      const token = localStorage.getItem('token');
       if (editingId) {
-        await axios.put(`${API_BASE_URL}/api/users/${editingId}`, form, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        await apiClientInstance.put(`/api/users/${editingId}`, form); // Use apiClientInstance
         setSuccess('User updated.');
       } else {
-        await axios.post(`${API_BASE_URL}/api/users`, form, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        await apiClientInstance.post('/api/users', form); // Use apiClientInstance
         setSuccess('User created.');
       }
-      setForm({ name: '', email: '', role: 'staff', password: '' });
+      setForm({ username: '', name: '', email: '', role: 'staff', password: '' }); // Reset form
       setEditingId(null);
       fetchUsers();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to save user.');
+      console.error("Submit user error:", err); // Added console.error
     }
   };
 
   const handleEdit = user => {
-    setForm({ name: user.name, email: user.email, role: user.role, password: '' });
+    setForm({ username: user.username || '', name: user.name, email: user.email, role: user.role, password: '' });
     setEditingId(user._id);
     setError('');
     setSuccess('');
   };
 
-  // Modified handleDelete to open the modal
   const handleDelete = id => {
     setUserToDeleteId(id);
     setIsModalOpen(true);
   };
 
-  // New function to confirm deletion
   const confirmDeleteUser = async () => {
     if (!userToDeleteId) return;
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`${API_BASE_URL}/api/users/${userToDeleteId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setSuccess('User deleted successfully.'); // Provide success feedback
+      await apiClientInstance.delete(`/api/users/${userToDeleteId}`); // Use apiClientInstance
+      setSuccess('User deleted successfully.');
       fetchUsers();
     } catch (err) {
       setError('Failed to delete user.');
+      console.error("Delete user error:", err); // Added console.error
     }
     setIsModalOpen(false);
     setUserToDeleteId(null);
   };
 
-  // New function to cancel deletion
   const cancelDeleteUser = () => {
     setIsModalOpen(false);
     setUserToDeleteId(null);
@@ -127,6 +114,7 @@ const UserManagement = ({ onClose }) => {
       {error && <div className="text-red-600 mb-2">{error}</div>}
       {success && <div className="text-green-600 mb-2">{success}</div>}
       <form onSubmit={handleSubmit} className="bg-white rounded shadow p-4 mb-6 flex flex-col gap-3">
+        <input name="username" value={form.username} onChange={handleChange} placeholder="Username" className="border rounded px-3 py-2" required />
         <input name="name" value={form.name} onChange={handleChange} placeholder="Name" className="border rounded px-3 py-2" required />
         <input name="email" value={form.email} onChange={handleChange} placeholder="Email" className="border rounded px-3 py-2" required type="email" />
         <select name="role" value={form.role} onChange={handleChange} className="border rounded px-3 py-2">
@@ -151,6 +139,7 @@ const UserManagement = ({ onClose }) => {
             <tr className="bg-gray-100">
               <th className="p-2">Name</th>
               <th className="p-2">Email</th>
+              <th className="p-2">Username</th>
               <th className="p-2">Role</th>
               <th className="p-2">Actions</th>
             </tr>
@@ -160,6 +149,7 @@ const UserManagement = ({ onClose }) => {
               <tr key={u._id} className="border-t">
                 <td className="p-2">{u.name}</td>
                 <td className="p-2">{u.email}</td>
+                <td className="p-2">{u.username}</td>
                 <td className="p-2">{u.role}</td>
                 <td className="p-2 flex gap-2">
                   <button className="text-blue-600 underline" onClick={() => handleEdit(u)}>Edit</button>

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom'; // Import useNavigate
 import { login as apiLogin } from '../api'; // Import the login function from api.js
 
-const Login = ({ onLogin }) => {
+const Login = () => {
   const [username, setUsername] = useState(''); // Changed from email to username
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate(); // Initialize useNavigate
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -22,7 +24,7 @@ const Login = ({ onLogin }) => {
       if (res.data.role) {
         localStorage.setItem('userRole', res.data.role);
       }
-      onLogin(); // Callback to update app state, e.g., redirect to dashboard
+      navigate('/new-dashboard'); // Navigate to NewAdminDashboard
     } catch (err) {
       setError(
         err.response && err.response.data && err.response.data.error

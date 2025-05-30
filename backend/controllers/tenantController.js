@@ -1,11 +1,19 @@
 const Tenant = require('../models/Tenant');
 const Room = require('../models/Room');
 const Booking = require('../models/Booking');
-const mongoose = require('mongoose'); // Added mongoose import
+const mongoose = require('mongoose'); 
+const path = require('path'); 
+const fs = require('fs'); 
+
+const ensureUploadDirExists = (dirPath) => {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+};
 
 const getTenants = async (req, res) => {
   try {
-    const tenants = await Tenant.find();
+    const tenants = await Tenant.find().populate('room'); // Populate room details
     res.status(200).json(tenants);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -14,47 +22,69 @@ const getTenants = async (req, res) => {
 
 const addTenant = async (req, res) => {
   try {
+    console.log("[tenantController-addTenant] req.body:", JSON.stringify(req.body, null, 2));
+
     const { 
       name, 
       contact, 
       email, 
-      room, // This is expected to be a room ID or name string
+      room, // Expected to be room ID
+      bedNumber, // Added bedNumber
       status, 
       moveInDate, 
       moveOutDate, 
       accommodationType, 
-      // bookingHistory, // bookingHistory is usually managed by booking operations, not direct tenant creation
       rentPaidStatus, 
       rentDueDate, 
       rentPaymentDate, 
       aadharNumber,
-      securityDeposit, // Expect securityDeposit as an object
-      remarks, // Added remarks
-      intendedVacationDate, // Added intendedVacationDate
-      customRent // Added customRent
+      remarks,
+      intendedVacationDate,
+      customRent,
+      dob, // Added dob
+      emergencyContact, // Added emergencyContact
+      preferredRoomType // Added preferredRoomType
     } = req.body;
 
+    let securityDepositData = {};
+    if (req.body.securityDeposit && typeof req.body.securityDeposit === 'string') {
+      try {
+        securityDepositData = JSON.parse(req.body.securityDeposit);
+      } catch (parseError) {
+        console.error("[tenantController-addTenant] Error parsing securityDeposit JSON:", parseError);
+        return res.status(400).json({ error: 'Invalid format for securityDeposit' });
+      }
+    } else if (req.body.securityDeposit && typeof req.body.securityDeposit === 'object') {
+      // If it's already an object (e.g. not from FormData)
+      securityDepositData = req.body.securityDeposit;
+    }
+
+
     if (!name || !contact || !email) {
+      console.warn("[tenantController-addTenant] Validation failed: Name, contact, and email are required.");
       return res.status(400).json({ error: 'Name, contact, and email are required' });
     }
+
     const existingContact = await Tenant.findOne({ contact });
     if (existingContact) {
+      console.warn(`[tenantController-addTenant] Validation failed: Contact number ${contact} already exists.`);
       return res.status(400).json({ error: 'A tenant with this contact number already exists' });
     }
     if (aadharNumber) {
       const existingAadhar = await Tenant.findOne({ aadharNumber });
       if (existingAadhar) {
+        console.warn(`[tenantController-addTenant] Validation failed: Aadhar number ${aadharNumber} already exists.`);
         return res.status(400).json({ error: 'A tenant with this Aadhar number already exists' });
       }
     }
 
-    // Construct tenantData ensuring securityDeposit is handled correctly
-    const tenantData = { 
+    const tenantDataObject = { 
       name, 
       contact, 
       email, 
-      room, 
-      status, 
+      room: null, // Initialize room as null
+      bedNumber, 
+      status: 'Pending Allocation', // Default status
       moveInDate, 
       moveOutDate, 
       accommodationType, 
@@ -62,63 +92,103 @@ const addTenant = async (req, res) => {
       rentDueDate, 
       rentPaymentDate, 
       aadharNumber,
-      remarks, // Added remarks
-      intendedVacationDate, // Added intendedVacationDate
-      customRent, // Added customRent
-      securityDeposit: { // Ensure securityDeposit is an object
-        amount: securityDeposit?.amount,
-        refundableType: securityDeposit?.refundableType || 'fully', // Default if not provided
-        conditions: securityDeposit?.conditions || '' // Default if not provided
+      remarks,
+      intendedVacationDate,
+      customRent,
+      dob,
+      emergencyContact,
+      preferredRoomType,
+      securityDeposit: {
+        amount: securityDepositData.amount ? parseFloat(securityDepositData.amount) : 0,
+        refundableType: securityDepositData.refundableType || 'fully',
+        conditions: securityDepositData.conditions || ''
       }
-      // bookingHistory should not be set directly here unless specifically intended for initial setup
     };
-
-    const newTenant = await Tenant.create(tenantData);
     
-    // If a room is assigned during tenant creation, update room occupancy
-    if (room) { // Assuming 'room' contains the room's ID or a unique name
-      // If 'room' is an ID:
-      // await Room.findByIdAndUpdate(room, { $inc: { 'occupancy.current': 1 } });
-      // If 'room' is a name (as suggested by previous logic in updateTenant):
-      const roomDoc = await Room.findOne({ name: room }); // Or use _id if 'room' is an ID
+    console.log("[tenantController-addTenant] Tenant data to be created:", JSON.stringify(tenantDataObject, null, 2));
+
+    const newTenant = await Tenant.create(tenantDataObject);
+    console.log(`[tenantController-addTenant] Tenant ${newTenant.name} created with ID ${newTenant._id}. Initial room: ${newTenant.room}, Initial status: ${newTenant.status}`);
+    
+    // Room assignment and occupancy update logic
+    if (room && mongoose.Types.ObjectId.isValid(room)) {
+      const roomDoc = await Room.findById(room);
       if (roomDoc) {
+        console.log(`[tenantController-addTenant] Found room ${roomDoc.name} (ID: ${roomDoc._id}) for assignment. Current: ${roomDoc.occupancy.current}, Max: ${roomDoc.occupancy.max}`);
         if (roomDoc.occupancy.current < roomDoc.occupancy.max) {
+          newTenant.room = roomDoc._id; // Assign valid room ID
+          newTenant.status = req.body.status || 'Active'; // Set to 'Active' or provided status from req.body
           roomDoc.occupancy.current += 1;
-          if (roomDoc.occupancy.current >= roomDoc.occupancy.max) {
-            roomDoc.isBooked = true;
-          }
+          roomDoc.isBooked = (roomDoc.occupancy.current >= roomDoc.occupancy.max);
           await roomDoc.save();
+          await newTenant.save(); // Save tenant with updated room and status
+          console.log(`[tenantController-addTenant] Tenant ${newTenant.name} assigned to room ${roomDoc.name}. Occupancy updated. New status: ${newTenant.status}`);
         } else {
-          // Optionally handle the case where the room is full, though this should ideally be checked client-side too
-          console.warn(`Attempted to add tenant to full room: ${room}`);
-          // Decide if this should be an error or just a warning
+          console.warn(`[tenantController-addTenant] Room ${roomDoc.name} (ID: ${roomDoc._id}) is full. Tenant ${newTenant.name} remains 'Pending Allocation'.`);
+          // Tenant's room remains null, status remains 'Pending Allocation'
         }
       } else {
-        console.warn(`Room with identifier ${room} not found during tenant creation.`);
+        console.warn(`[tenantController-addTenant] Room with ID ${room} not found. Tenant ${newTenant.name} remains 'Pending Allocation'.`);
+        // Tenant's room remains null, status remains 'Pending Allocation'
       }
+    } else if (room) { // Room ID provided but invalid format
+      console.warn(`[tenantController-addTenant] Provided room value '${room}' is not a valid ObjectId. Tenant ${newTenant.name} remains 'Pending Allocation'.`);
+      // Tenant's room remains null, status remains 'Pending Allocation'
+    } else { // No room ID provided
+        console.log(`[tenantController-addTenant] No room provided for tenant ${newTenant.name}. Status remains 'Pending Allocation'.`);
     }
-    res.status(201).json(newTenant);
+
+    // Repopulate tenant to ensure all fields are fresh before sending, especially if status/room changed
+    const finalTenant = await Tenant.findById(newTenant._id).populate('room');
+    console.log(`[tenantController-addTenant] Final state of newTenant before sending response: ID=${finalTenant._id}, Name=${finalTenant.name}, Room=${JSON.stringify(finalTenant.room)}, Status=${finalTenant.status}, Bed=${finalTenant.bedNumber}`);
+    res.status(201).json(finalTenant);
   } catch (error) {
-    console.error("Error in addTenant:", error); // Added console log for debugging
+    console.error("[tenantController-addTenant] Error:", error); 
     res.status(500).json({ error: error.message });
   }
 };
 
 const updateTenant = async (req, res) => {
   try {
-    const { id } = req.params;
-    const incomingUpdates = req.body;
-    const tenantToUpdate = await Tenant.findById(id);
+    console.log("[tenantController-updateTenant] req.params.id:", req.params.id);
+    console.log("[tenantController-updateTenant] req.body:", JSON.stringify(req.body, null, 2));
+    // console.log("[tenantController-updateTenant] req.files:", JSON.stringify(req.files, null, 2)); // If files are ever re-introduced
 
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ error: 'Invalid tenant ID format' });
+    }
+
+    const tenantToUpdate = await Tenant.findById(id);
     if (!tenantToUpdate) {
       return res.status(404).json({ error: 'Tenant not found' });
     }
 
-    const originalRoomName = tenantToUpdate.room; // This is a NAME
-    const originalBedNumber = tenantToUpdate.bedNumber;
-    const originalStatus = tenantToUpdate.status;
+    const incomingUpdates = { ...req.body };
+    let processedUpdates = { ...incomingUpdates }; // Clone to modify
 
-    let processedUpdates = { ...incomingUpdates }; // Start with all incoming changes
+    // Parse securityDeposit if it's a stringified JSON
+    if (processedUpdates.securityDeposit && typeof processedUpdates.securityDeposit === 'string') {
+      try {
+        const parsedSecurityDeposit = JSON.parse(processedUpdates.securityDeposit);
+        processedUpdates.securityDeposit = {
+          amount: parsedSecurityDeposit.amount !== undefined ? parseFloat(parsedSecurityDeposit.amount) : tenantToUpdate.securityDeposit.amount,
+          refundableType: parsedSecurityDeposit.refundableType || tenantToUpdate.securityDeposit.refundableType,
+          conditions: parsedSecurityDeposit.conditions !== undefined ? parsedSecurityDeposit.conditions : tenantToUpdate.securityDeposit.conditions,
+        };
+      } catch (parseError) {
+        console.error("[tenantController-updateTenant] Error parsing securityDeposit JSON:", parseError);
+        return res.status(400).json({ error: 'Invalid format for securityDeposit' });
+      }
+    } else if (processedUpdates.securityDeposit && typeof processedUpdates.securityDeposit === 'object') {
+      // If it's already an object, ensure all parts are handled correctly, merging with existing
+      processedUpdates.securityDeposit = {
+        amount: processedUpdates.securityDeposit.amount !== undefined ? parseFloat(processedUpdates.securityDeposit.amount) : tenantToUpdate.securityDeposit.amount,
+        refundableType: processedUpdates.securityDeposit.refundableType || tenantToUpdate.securityDeposit.refundableType,
+        conditions: processedUpdates.securityDeposit.conditions !== undefined ? processedUpdates.securityDeposit.conditions : tenantToUpdate.securityDeposit.conditions,
+      };
+    }
+
 
     // Uniqueness checks for contact & aadhar
     if (processedUpdates.contact && processedUpdates.contact !== tenantToUpdate.contact) {
@@ -133,188 +203,139 @@ const updateTenant = async (req, res) => {
         return res.status(400).json({ error: 'Another tenant with this Aadhar number already exists' });
       }
     }
-
-    // Handle intendedVacationDate
-    if (processedUpdates.hasOwnProperty('intendedVacationDate')) {
-      if (processedUpdates.intendedVacationDate && processedUpdates.intendedVacationDate !== '') {
-        console.log(`Setting/updating intendedVacationDate for tenant ${tenantToUpdate.name} to ${processedUpdates.intendedVacationDate}`);
-      } else {
-        console.log(`Clearing intendedVacationDate for tenant ${tenantToUpdate.name}.`);
-        processedUpdates.intendedVacationDate = null;
-      }
-    }
-
-    // --- Start of new core logic for room and bed assignment ---
-
-    // 1. Resolve Room ID to Room Document and Name
-    let newRoomDoc = null; // Document of the NEW room, if specified by ID
-    let finalTenantRoomName = originalRoomName; // What tenant.room will be set to
-
-    if (incomingUpdates.room && typeof incomingUpdates.room === 'string' && mongoose.Types.ObjectId.isValid(incomingUpdates.room)) {
-        console.log(`[tenantController - updateTenant] Received room ID in payload: ${incomingUpdates.room}`);
-        newRoomDoc = await Room.findById(incomingUpdates.room);
-        if (!newRoomDoc) {
-            console.error(`[tenantController - updateTenant] Room.findById returned null for ID: ${incomingUpdates.room}.`);
-            return res.status(404).json({ error: `New room with ID ${incomingUpdates.room} not found.` });
-        }
-        console.log(`[tenantController - updateTenant] Successfully found room by ID. Room Name: ${newRoomDoc.name}`);
-        finalTenantRoomName = newRoomDoc.name; // Use the name of the resolved room
-    } else if (incomingUpdates.hasOwnProperty('room') && !incomingUpdates.room) { // Explicitly unassigning room (e.g., room: null or room: '')
-        console.log(`[tenantController - updateTenant] Tenant ${tenantToUpdate.name} is being explicitly unassigned from any room.`);
-        finalTenantRoomName = null;
-    } else if (incomingUpdates.room && typeof incomingUpdates.room === 'string' && !mongoose.Types.ObjectId.isValid(incomingUpdates.room)) {
-        // If a string is provided for room but it's not a valid ObjectId
-        console.warn(`[tenantController - updateTenant] Received room value '${incomingUpdates.room}' which is not a valid ObjectId and not empty. Treating as error.`);
-        return res.status(400).json({ error: `Invalid room ID format: ${incomingUpdates.room}.` });
-    }
-    // If incomingUpdates.room was not provided, finalTenantRoomName remains originalRoomName by default.
-
-    // 2. Determine Final Bed Number
-    let finalTenantBedNumber = originalBedNumber;
-    if (incomingUpdates.hasOwnProperty('bedNumber')) {
-        finalTenantBedNumber = incomingUpdates.bedNumber;
-    }
-    // If tenant is not assigned to a room, they cannot have a bed number.
-    if (finalTenantRoomName === null) {
-        finalTenantBedNumber = null;
-    }
-
-    // 3. Handle Status Changes and Occupancy
+    
+    const originalRoomId = tenantToUpdate.room ? tenantToUpdate.room.toString() : null;
+    const newRoomId = processedUpdates.room ? processedUpdates.room.toString() : null;
+    const originalStatus = tenantToUpdate.status;
     const newStatus = processedUpdates.status || originalStatus;
 
-    // Scenario A: Tenant becomes Inactive
+    console.log(`[tenantController-updateTenant] Original Room ID: ${originalRoomId}, New Room ID: ${newRoomId}`);
+    console.log(`[tenantController-updateTenant] Original Status: ${originalStatus}, New Status: ${newStatus}`);
+
+    // Handle room and status changes for occupancy
     if (newStatus === 'Inactive' && originalStatus === 'Active') {
-        console.log(`Tenant ${tenantToUpdate.name} status changing from Active to Inactive.`);
+        console.log(`[tenantController-updateTenant] Tenant ${tenantToUpdate.name} becoming Inactive.`);
         processedUpdates.moveOutDate = processedUpdates.moveOutDate ? new Date(processedUpdates.moveOutDate).toISOString() : new Date().toISOString();
-        console.log(`moveOutDate for ${tenantToUpdate.name} set to ${processedUpdates.moveOutDate}`);
-      
-        const activeBooking = await Booking.findOne({ tenant: id, status: { $in: ['Active', 'Upcoming'] } }).sort({ startDate: -1 });
-        if (activeBooking) {
-            console.log(`Found active/upcoming booking ${activeBooking._id} for tenant ${tenantToUpdate.name}.`);
-            activeBooking.endDate = new Date(processedUpdates.moveOutDate);
-            activeBooking.status = 'Vacated';
-            await activeBooking.save();
-            console.log(`Booking ${activeBooking._id} updated with endDate: ${activeBooking.endDate} and status: ${activeBooking.status}.`);
-            
-            const roomFromBooking = await Room.findById(activeBooking.room); // Booking.room is an ID
-            if (roomFromBooking) {
-                if (roomFromBooking.occupancy.current > 0) {
-                    roomFromBooking.occupancy.current -= 1;
-                    roomFromBooking.isBooked = (roomFromBooking.occupancy.current >= roomFromBooking.occupancy.max);
-                    await roomFromBooking.save();
-                    console.log(`Decremented occupancy for room ${roomFromBooking.name} (via booking). New current: ${roomFromBooking.occupancy.current}`);
-                }
-            } else {
-                console.warn(`Could not find room with ID ${activeBooking.room} from booking to decrement occupancy.`);
-            }
-        } else {
-            console.log(`No active/upcoming booking found for tenant ${tenantToUpdate.name} to update upon deactivation.`);
-            if (originalRoomName) { 
-                const roomToUpdateOccupancy = await Room.findOne({ name: originalRoomName });
-                if (roomToUpdateOccupancy && roomToUpdateOccupancy.occupancy.current > 0) {
-                    roomToUpdateOccupancy.occupancy.current -= 1;
-                    roomToUpdateOccupancy.isBooked = (roomToUpdateOccupancy.occupancy.current >= roomToUpdateOccupancy.occupancy.max);
-                    await roomToUpdateOccupancy.save();
-                    console.log(`Decremented occupancy for room ${originalRoomName} (no active booking). New current: ${roomToUpdateOccupancy.occupancy.current}`);
-                }
+        if (originalRoomId && mongoose.Types.ObjectId.isValid(originalRoomId)) {
+            const roomDoc = await Room.findById(originalRoomId);
+            if (roomDoc && roomDoc.occupancy.current > 0) {
+                roomDoc.occupancy.current -= 1;
+                roomDoc.isBooked = (roomDoc.occupancy.current >= roomDoc.occupancy.max);
+                await roomDoc.save();
+                console.log(`[tenantController-updateTenant] Occupancy decremented for room ${roomDoc.name} due to tenant inactivation.`);
             }
         }
-        finalTenantRoomName = null; // Inactive tenant has no room
-        finalTenantBedNumber = null;  // Inactive tenant has no bed
-    }
-    // Scenario B: Tenant becomes Active (from Inactive or other non-Active states)
-    else if (newStatus === 'Active' && originalStatus !== 'Active') {
-        console.log(`Tenant ${tenantToUpdate.name} status changing to Active from ${originalStatus}.`);
-        if (finalTenantRoomName) { // A room is assigned
-            const roomToOccupy = newRoomDoc || await Room.findOne({ name: finalTenantRoomName });
-            if (roomToOccupy) {
-                if (roomToOccupy.occupancy.current < roomToOccupy.occupancy.max) {
-                    roomToOccupy.occupancy.current += 1;
-                    roomToOccupy.isBooked = (roomToOccupy.occupancy.current >= roomToOccupy.occupancy.max);
-                    await roomToOccupy.save();
-                    console.log(`Incremented occupancy for room ${finalTenantRoomName}. New current: ${roomToOccupy.occupancy.current}`);
+        processedUpdates.room = null; // Unassign room
+        processedUpdates.bedNumber = null; // Unassign bed
+    } else if (newStatus === 'Active' && originalStatus !== 'Active') {
+        console.log(`[tenantController-updateTenant] Tenant ${tenantToUpdate.name} becoming Active.`);
+        if (newRoomId && mongoose.Types.ObjectId.isValid(newRoomId)) {
+            const roomDoc = await Room.findById(newRoomId);
+            if (roomDoc) {
+                if (roomDoc.occupancy.current < roomDoc.occupancy.max) {
+                    roomDoc.occupancy.current += 1;
+                    roomDoc.isBooked = (roomDoc.occupancy.current >= roomDoc.occupancy.max);
+                    await roomDoc.save();
+                    console.log(`[tenantController-updateTenant] Occupancy incremented for room ${roomDoc.name} due to tenant activation.`);
                 } else {
-                    return res.status(400).json({ error: `Cannot activate tenant into full room ${finalTenantRoomName}.` });
+                    return res.status(400).json({ error: `Cannot activate tenant into full room ${roomDoc.name}.` });
                 }
             } else {
-                console.error(`Error: Room ${finalTenantRoomName} not found when activating tenant ${tenantToUpdate.name}.`);
-                return res.status(404).json({ error: `Room ${finalTenantRoomName} not found.` });
+                 return res.status(404).json({ error: `Room with ID ${newRoomId} not found for activation.` });
             }
+        } else if (newRoomId) { // newRoomId is present but not valid ObjectId
+            return res.status(400).json({ error: `Invalid Room ID ${newRoomId} for activation.` });
         } else { // Becoming active but no room assigned
-            finalTenantBedNumber = null; // No room, so no bed
+            console.log(`[tenantController-updateTenant] Tenant ${tenantToUpdate.name} activated without room assignment. Status will be Active, room null.`);
+            processedUpdates.room = null;
+            processedUpdates.bedNumber = null;
         }
-        processedUpdates.moveOutDate = null; // Clear moveOutDate when becoming active
-    }
-    // Scenario C: Tenant is Active (or another non-Inactive status) and Room/Bed might change
-    else if (newStatus === originalStatus && (newStatus === 'Active' || newStatus === 'Pending Allocation' /* other relevant statuses */) ) {
-        if (finalTenantRoomName !== originalRoomName) { // Room assignment is changing
-            console.log(`Tenant ${tenantToUpdate.name} (Status: ${newStatus}) room changing from '${originalRoomName || 'N/A'}' to '${finalTenantRoomName || 'N/A'}'.`);
-            // Vacate original room
-            if (originalRoomName) {
-                const oldRoom = await Room.findOne({ name: originalRoomName });
-                if (oldRoom) {
-                    if (oldRoom.occupancy.current > 0) {
-                        oldRoom.occupancy.current -= 1;
-                        oldRoom.isBooked = (oldRoom.occupancy.current >= oldRoom.occupancy.max);
-                        await oldRoom.save();
-                        console.log(`Decremented occupancy for old room ${originalRoomName}. New current: ${oldRoom.occupancy.current}`);
-                    }
-                } else {
-                    console.warn(`Old room ${originalRoomName} not found during vacancy for tenant ${tenantToUpdate.name}.`);
-                }
+        processedUpdates.moveOutDate = null;
+    } else if (newRoomId !== originalRoomId && newStatus === 'Active') { // Room change while active
+        console.log(`[tenantController-updateTenant] Tenant ${tenantToUpdate.name} room changing from ${originalRoomId} to ${newRoomId} while Active.`);
+        // Vacate old room
+        if (originalRoomId && mongoose.Types.ObjectId.isValid(originalRoomId)) {
+            const oldRoomDoc = await Room.findById(originalRoomId);
+            if (oldRoomDoc && oldRoomDoc.occupancy.current > 0) {
+                oldRoomDoc.occupancy.current -= 1;
+                oldRoomDoc.isBooked = (oldRoomDoc.occupancy.current >= oldRoomDoc.occupancy.max);
+                await oldRoomDoc.save();
+                console.log(`[tenantController-updateTenant] Occupancy decremented for old room ${oldRoomDoc.name}.`);
             }
-            // Occupy new room
-            if (finalTenantRoomName) {
-                const roomToOccupy = newRoomDoc || await Room.findOne({ name: finalTenantRoomName });
-                if (roomToOccupy) {
-                    if (roomToOccupy.occupancy.current < roomToOccupy.occupancy.max) {
-                        roomToOccupy.occupancy.current += 1;
-                        roomToOccupy.isBooked = (roomToOccupy.occupancy.current >= roomToOccupy.occupancy.max);
-                        await roomToOccupy.save();
-                        console.log(`Incremented occupancy for new room ${finalTenantRoomName}. New current: ${roomToOccupy.occupancy.current}`);
-                    } else {
-                        console.error(`Cannot move tenant ${tenantToUpdate.name} to full room ${finalTenantRoomName}.`);
-                        // Potentially revert old room decrement if a transaction system was in place.
-                        return res.status(400).json({ error: `Cannot move tenant to full room ${finalTenantRoomName}. Old room occupancy may have been altered.` });
-                    }
-                } else {
-                     console.error(`Error: New room ${finalTenantRoomName} not found for active tenant ${tenantToUpdate.name}.`);
-                    return res.status(404).json({ error: `New room ${finalTenantRoomName} not found.` });
-                }
-            }
-            // If finalTenantRoomName is null here, it means unassignment. Old room is vacated. Bed number already set to null.
-        } else if (finalTenantRoomName && incomingUpdates.hasOwnProperty('bedNumber') && finalTenantBedNumber !== originalBedNumber) {
-            // Room is the same, but bed number changed. No occupancy change needed.
-            console.log(`Tenant ${tenantToUpdate.name} bed number in room ${finalTenantRoomName} changing from ${originalBedNumber || 'N/A'} to ${finalTenantBedNumber || 'N/A'}.`);
         }
+        // Occupy new room
+        if (newRoomId && mongoose.Types.ObjectId.isValid(newRoomId)) {
+            const newRoomDoc = await Room.findById(newRoomId);
+            if (newRoomDoc) {
+                if (newRoomDoc.occupancy.current < newRoomDoc.occupancy.max) {
+                    newRoomDoc.occupancy.current += 1;
+                    newRoomDoc.isBooked = (newRoomDoc.occupancy.current >= newRoomDoc.occupancy.max);
+                    await newRoomDoc.save();
+                    console.log(`[tenantController-updateTenant] Occupancy incremented for new room ${newRoomDoc.name}.`);
+                } else {
+                    // Revert old room decrement if possible (or use transactions)
+                    // For now, return error. Tenant room will not be updated.
+                    if (originalRoomId && mongoose.Types.ObjectId.isValid(originalRoomId)) {
+                        const oldRoomDoc = await Room.findById(originalRoomId);
+                        if (oldRoomDoc) { oldRoomDoc.occupancy.current +=1; await oldRoomDoc.save(); } // Attempt to revert
+                    }
+                    return res.status(400).json({ error: `Cannot move tenant to full room ${newRoomDoc.name}.` });
+                }
+            } else {
+                 return res.status(404).json({ error: `New room with ID ${newRoomId} not found.` });
+            }
+        } else if (newRoomId) { // newRoomId is present but not valid ObjectId
+             return res.status(400).json({ error: `Invalid New Room ID ${newRoomId}.` });
+        } else { // Unassigning room (newRoomId is null)
+            processedUpdates.bedNumber = null; // No room, so no bed
+            console.log(`[tenantController-updateTenant] Tenant ${tenantToUpdate.name} unassigned from room.`);
+        }
+    } else if (newRoomId === null && originalRoomId !== null && newStatus === 'Active') { // Explicitly unassigning room for an active tenant
+        console.log(`[tenantController-updateTenant] Tenant ${tenantToUpdate.name} is being explicitly unassigned from room ${originalRoomId}.`);
+        if (originalRoomId && mongoose.Types.ObjectId.isValid(originalRoomId)) {
+            const oldRoomDoc = await Room.findById(originalRoomId);
+            if (oldRoomDoc && oldRoomDoc.occupancy.current > 0) {
+                oldRoomDoc.occupancy.current -= 1;
+                oldRoomDoc.isBooked = (oldRoomDoc.occupancy.current >= oldRoomDoc.occupancy.max);
+                await oldRoomDoc.save();
+                console.log(`[tenantController-updateTenant] Occupancy decremented for old room ${oldRoomDoc.name} due to unassignment.`);
+            }
+        }
+        processedUpdates.bedNumber = null;
     }
 
-    // 4. Set final tenant document fields in processedUpdates
-    processedUpdates.room = finalTenantRoomName;
-    processedUpdates.bedNumber = finalTenantBedNumber;
-    
-    // --- End of new core logic ---
 
-    // Handle accommodationType & bookingHistory (existing logic)
-    if (processedUpdates.accommodationType === 'daily' && processedUpdates.bookingHistory) {
-      console.warn("Consider moving daily bookingHistory updates to a dedicated booking endpoint.");
-      if (Array.isArray(processedUpdates.bookingHistory)) {
-        // This $push operation should ideally be part of the main update if possible,
-        // or handled carefully to avoid race conditions if tenantToUpdate is saved before this.
-        // For now, keeping as separate update, but Object.assign followed by save is generally preferred.
-        await Tenant.findByIdAndUpdate(id, { $push: { bookingHistory: { $each: processedUpdates.bookingHistory } } });
-      } else {
-        console.error("bookingHistory is not an array, cannot push.");
-      }
-      delete processedUpdates.bookingHistory; // Remove after handling to prevent direct set by Object.assign
+    // If status is 'Pending Allocation', ensure room and bed are null
+    if (processedUpdates.status === 'Pending Allocation') {
+        if (processedUpdates.room || processedUpdates.bedNumber) { // If a room was assigned but status is pending
+            console.log(`[tenantController-updateTenant] Tenant ${tenantToUpdate.name} status is 'Pending Allocation'. Clearing room/bed assignment.`);
+            // If there was a room previously, decrement its occupancy if it wasn't handled above
+            if (originalRoomId && originalRoomId !== newRoomId && mongoose.Types.ObjectId.isValid(originalRoomId)) {
+                 const roomToVacate = await Room.findById(originalRoomId);
+                 if (roomToVacate && roomToVacate.occupancy.current > 0) {
+                    // This logic might be redundant if handled by status changes above, but acts as a safeguard
+                    // roomToVacate.occupancy.current -=1;
+                    // await roomToVacate.save();
+                    // console.log(`[tenantController-updateTenant] Safeguard: Decremented occupancy for ${roomToVacate.name} as tenant moves to Pending Allocation.`);
+                 }
+            }
+        }
+        processedUpdates.room = null;
+        processedUpdates.bedNumber = null;
     }
 
-    Object.assign(tenantToUpdate, processedUpdates);
-    await tenantToUpdate.save();
-    res.status(200).json(tenantToUpdate);
 
+    const updatedTenant = await Tenant.findByIdAndUpdate(id, processedUpdates, { new: true, runValidators: true });
+    if (!updatedTenant) { // Should have been caught by findById earlier, but as a safeguard
+        return res.status(404).json({ error: 'Tenant not found after update attempt.' });
+    }
+    console.log("[tenantController-updateTenant] Tenant updated successfully:", JSON.stringify(updatedTenant, null, 2));
+    res.status(200).json(updatedTenant);
   } catch (error) {
-    console.error(`Error in updateTenant for ID ${req.params.id}:`, error);
+    console.error("[tenantController-updateTenant] Error:", error);
+    if (error.name === 'ValidationError') {
+        return res.status(400).json({ error: error.message });
+    }
     res.status(500).json({ error: error.message });
   }
 };
@@ -322,362 +343,199 @@ const updateTenant = async (req, res) => {
 const deleteTenant = async (req, res) => {
   try {
     const { id } = req.params;
-    const tenant = await Tenant.findByIdAndDelete(id);
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ error: 'Invalid tenant ID format' });
+    }
+    const tenant = await Tenant.findById(id);
+
     if (!tenant) {
       return res.status(404).json({ error: 'Tenant not found' });
     }
-    // Adjust room occupancy if tenant was in a room
-    if (tenant.room) {
-      const room = await Room.findOne({ name: tenant.room });
-      if (room && room.occupancy.current > 0) {
-        room.occupancy.current -= 1;
-        room.isBooked = (room.occupancy.current >= room.occupancy.max);
-        await room.save();
+
+    // If tenant was in a room, decrement occupancy
+    if (tenant.room && tenant.status === 'Active' && mongoose.Types.ObjectId.isValid(tenant.room)) {
+      const roomDoc = await Room.findById(tenant.room);
+      if (roomDoc && roomDoc.occupancy.current > 0) {
+        roomDoc.occupancy.current -= 1;
+        roomDoc.isBooked = (roomDoc.occupancy.current >= roomDoc.occupancy.max);
+        await roomDoc.save();
+        console.log(`[tenantController-deleteTenant] Occupancy decremented for room ${roomDoc.name} after deleting tenant ${tenant.name}`);
       }
     }
+
+    await Tenant.findByIdAndDelete(id);
+    console.log(`[tenantController-deleteTenant] Tenant with ID ${id} deleted successfully.`);
     res.status(200).json({ message: 'Tenant deleted successfully' });
   } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-};
-
-const getTenantById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const tenant = await Tenant.findById(id);
-    if (!tenant) {
-      return res.status(404).json({ error: 'Tenant not found' });
-    }
-    res.status(200).json(tenant);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-};
-
-// Placeholder functions if they don't exist, otherwise ensure they are correctly defined.
-const allocateTenant = async (req, res) => {
-  const { tenantId, roomId, bedNumber, moveInDate } = req.body;
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  try {
-    if (!tenantId || !roomId || !bedNumber || !moveInDate) {
-      return res.status(400).json({ error: 'Tenant ID, Room ID, Bed Number, and Move-in Date are required.' });
-    }
-
-    const tenant = await Tenant.findById(tenantId).session(session);
-    if (!tenant) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({ error: 'Tenant not found' });
-    }
-    if (tenant.status === 'Active' && tenant.room) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({ error: `Tenant ${tenant.name} is already active in room ${tenant.room}. Please update existing record or deactivate first.` });
-    }
-
-    const room = await Room.findById(roomId).session(session);
-    if (!room) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({ error: 'Room not found' });
-    }
-
-    if (room.occupancy.current >= room.occupancy.max) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({ error: `Room ${room.name} is already full.` });
-    }
-
-    // Check if bed is already occupied by another active tenant in the same room
-    const existingTenantInBed = await Tenant.findOne({ 
-      room: room.name, // Assuming tenant.room stores room name
-      bedNumber: bedNumber, 
-      status: 'Active',
-      _id: { $ne: tenantId } // Exclude the current tenant if they are being reactivated into the same bed
-    }).session(session);
-
-    if (existingTenantInBed) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({ error: `Bed ${bedNumber} in room ${room.name} is already occupied by ${existingTenantInBed.name}.` });
-    }
-
-    // Update tenant details
-    tenant.room = room.name; // Store room name
-    tenant.bedNumber = bedNumber;
-    tenant.status = 'Active';
-    tenant.moveInDate = new Date(moveInDate);
-    tenant.moveOutDate = null; // Clear any previous moveOutDate
-    // tenant.rentDueDate = calculateNextRentDueDate(new Date(moveInDate), tenant.monthlyRentCyclePreference); // Placeholder for rent due date logic
-
-    // Update room occupancy
-    room.occupancy.current += 1;
-    if (room.occupancy.current >= room.occupancy.max) {
-      room.isBooked = true;
-    }
-
-    // Create a booking record
-    const booking = new Booking({
-      tenant: tenant._id,
-      room: room._id, // Store room ID in booking
-      bedNumber: bedNumber,
-      startDate: new Date(moveInDate),
-      // endDate: null, // Or set based on agreement
-      status: 'Active', // Booking status
-      rentAmount: tenant.customRent || room.price, // Use custom rent if available, else room price
-    });
-
-    await tenant.save({ session });
-    await room.save({ session });
-    await booking.save({ session });
-
-    await session.commitTransaction();
-    session.endSession();
-
-    res.status(200).json({ 
-      message: 'Tenant allocated successfully and booking created.', 
-      tenant,
-      booking 
-    });
-
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    console.error("Error in allocateTenant:", error);
+    console.error("[tenantController-deleteTenant] Error:", error);
     res.status(500).json({ error: error.message });
   }
 };
 
-const getTenantHistory = async (req, res) => {
-  const { tenantId } = req.params;
+// This function seems to be for a more direct allocation, might need review based on UI flow
+const allocateTenant = async (req, res) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(tenantId)) {
-        return res.status(400).json({ error: 'Invalid Tenant ID format.' });
+    const { tenantId, roomId, bedNumber } = req.body; // Added bedNumber
+
+    if (!mongoose.Types.ObjectId.isValid(tenantId) || !mongoose.Types.ObjectId.isValid(roomId)) {
+        return res.status(400).json({ error: 'Invalid tenant or room ID format' });
     }
+
     const tenant = await Tenant.findById(tenantId);
-    if (!tenant) {
-      return res.status(404).json({ error: 'Tenant not found' });
+    const room = await Room.findById(roomId);
+
+    if (!tenant || !room) {
+      return res.status(404).json({ error: 'Tenant or Room not found' });
     }
 
-    // Fetch booking history for the tenant
-    // Sorting by startDate descending to get the most recent bookings first
-    const bookings = await Booking.find({ tenant: tenantId })
-                                  .populate('room', 'name location price') // Populate room details
-                                  .sort({ startDate: -1 }); 
+    if (room.occupancy.current >= room.occupancy.max) {
+      return res.status(400).json({ error: 'Room is full' });
+    }
 
-    // Potentially, you could fetch payment history, communication logs, etc.
-    // For now, we'll just return booking history.
+    // If tenant was previously in another active room, vacate it
+    if (tenant.room && tenant.status === 'Active' && tenant.room.toString() !== roomId) {
+        const oldRoom = await Room.findById(tenant.room);
+        if (oldRoom && oldRoom.occupancy.current > 0) {
+            oldRoom.occupancy.current -=1;
+            oldRoom.isBooked = (oldRoom.occupancy.current >= oldRoom.occupancy.max);
+            await oldRoom.save();
+            console.log(`[tenantController-allocateTenant] Vacated old room ${oldRoom.name} for tenant ${tenant.name}`);
+        }
+    }
+    
+    tenant.room = roomId;
+    tenant.bedNumber = bedNumber; // Assign bed number
+    tenant.status = 'Active'; // Ensure status is active
+    tenant.moveInDate = tenant.moveInDate || new Date(); // Set move-in date if not already set
 
-    res.status(200).json({
-      tenantName: tenant.name,
-      contact: tenant.contact,
-      email: tenant.email,
-      bookingHistory: bookings,
-      // Add other relevant history data here in the future
-    });
+    room.occupancy.current += 1;
+    room.isBooked = (room.occupancy.current >= room.occupancy.max);
 
+    await tenant.save();
+    await room.save();
+    console.log(`[tenantController-allocateTenant] Tenant ${tenant.name} allocated to room ${room.name}, bed ${bedNumber}. Occupancy: ${room.occupancy.current}/${room.occupancy.max}`);
+
+    res.status(200).json({ message: 'Tenant allocated successfully', tenant, room });
   } catch (error) {
-    console.error(`Error fetching history for tenant ${tenantId}:`, error);
-    res.status(500).json({ error: `Failed to get tenant history: ${error.message}` });
+    console.error("[tenantController-allocateTenant] Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+const getTenantHistory = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ error: 'Invalid tenant ID format' });
+    }
+    // Example: Fetch bookings related to the tenant
+    const bookings = await Booking.find({ tenant: id }).sort({ startDate: -1 });
+    // This is a placeholder. Actual history might involve more complex aggregation
+    // or a dedicated history model.
+    res.status(200).json(bookings);
+  } catch (error) {
+    console.error("[tenantController-getTenantHistory] Error:", error);
+    res.status(500).json({ error: error.message });
   }
 };
 
 const updateSecurityDeposit = async (req, res) => {
-  const { tenantId } = req.params;
-  const { amount, refundableType, conditions } = req.body;
+    const { id } = req.params; // Tenant ID
+    const { amount, refundableType, conditions } = req.body;
 
-  try {
-    if (!mongoose.Types.ObjectId.isValid(tenantId)) {
-        return res.status(400).json({ error: 'Invalid Tenant ID format.' });
-    }
-
-    const tenant = await Tenant.findById(tenantId);
-    if (!tenant) {
-      return res.status(404).json({ error: 'Tenant not found' });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ error: 'Invalid tenant ID' });
     }
 
-    // Validate security deposit data
-    if (amount !== undefined && (typeof amount !== 'number' || amount < 0)) {
-        return res.status(400).json({ error: 'Invalid security deposit amount.' });
-    }
-    if (refundableType && !['fully', 'partial', 'non-refundable'].includes(refundableType)) {
-        return res.status(400).json({ error: 'Invalid refundable type for security deposit.' });
-    }
+    try {
+        const tenant = await Tenant.findById(id);
+        if (!tenant) {
+            return res.status(404).json({ error: 'Tenant not found' });
+        }
 
-    // Update only provided fields
-    if (amount !== undefined) {
-        tenant.securityDeposit.amount = amount;
+        if (amount !== undefined) tenant.securityDeposit.amount = parseFloat(amount);
+        if (refundableType) tenant.securityDeposit.refundableType = refundableType;
+        if (conditions !== undefined) tenant.securityDeposit.conditions = conditions;
+        
+        await tenant.save();
+        console.log(`[tenantController-updateSecurityDeposit] Security deposit updated for tenant ${tenant.name}`);
+        res.status(200).json({ message: 'Security deposit updated successfully', securityDeposit: tenant.securityDeposit });
+    } catch (error) {
+        console.error('[tenantController-updateSecurityDeposit] Error:', error);
+        res.status(500).json({ error: 'Failed to update security deposit' });
     }
-    if (refundableType) {
-        tenant.securityDeposit.refundableType = refundableType;
-    }
-    if (conditions !== undefined) {
-        tenant.securityDeposit.conditions = conditions;
-    }
-    
-    await tenant.save();
-    res.status(200).json({ 
-        message: 'Security deposit updated successfully.', 
-        securityDeposit: tenant.securityDeposit 
-    });
-
-  } catch (error) {
-    console.error(`Error updating security deposit for tenant ${tenantId}:`, error);
-    res.status(500).json({ error: `Failed to update security deposit: ${error.message}` });
-  }
 };
 
+// This is similar to allocateTenant but might be used in a different context, e.g., directly from a room management UI.
+// It's important to ensure these allocation functions are used consistently or consolidated.
 const allocateRoomToTenant = async (req, res) => {
-  const { tenantId, roomId, bedNumber, moveInDate } = req.body; // Added moveInDate
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  try {
-    if (!tenantId || !roomId || !bedNumber || !moveInDate) { // Added moveInDate check
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({ error: 'Tenant ID, Room ID, Bed Number, and Move-in Date are required.' });
-    }
+    const { tenantId, roomId } = req.params; // Note: tenantId and roomId from params
+    const { bedNumber } = req.body; // bedNumber from body
 
-    const tenant = await Tenant.findById(tenantId).session(session);
-    if (!tenant) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({ error: 'Tenant not found' });
-    }
-
-    const room = await Room.findById(roomId).session(session);
-    if (!room) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({ error: 'Room not found' });
+    if (!mongoose.Types.ObjectId.isValid(tenantId) || !mongoose.Types.ObjectId.isValid(roomId)) {
+        return res.status(400).json({ error: 'Invalid tenant or room ID format' });
     }
     
-    // If tenant is already active in a different room, this might need specific handling
-    // For now, this function assumes it's a new allocation or re-allocation after deactivation.
-    if (tenant.status === 'Active' && tenant.room && tenant.room !== room.name) {
-        // If tenant is active in another room, first vacate them from the old room.
-        const oldRoom = await Room.findOne({ name: tenant.room }).session(session);
-        if (oldRoom && oldRoom.occupancy.current > 0) {
-            oldRoom.occupancy.current -= 1;
-            oldRoom.isBooked = (oldRoom.occupancy.current >= oldRoom.occupancy.max);
-            await oldRoom.save({ session });
-            console.log(`[allocateRoomToTenant] Vacated tenant ${tenant.name} from old room ${oldRoom.name}`);
+    try {
+        const tenant = await Tenant.findById(tenantId);
+        const room = await Room.findById(roomId);
+
+        if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+        if (!room) return res.status(404).json({ error: 'Room not found' });
+
+        if (room.occupancy.current >= room.occupancy.max && tenant.room?.toString() !== roomId) { // Only block if moving to a new full room
+            return res.status(400).json({ error: 'Room is full' });
         }
-    } else if (tenant.status === 'Active' && tenant.room === room.name && tenant.bedNumber === bedNumber) {
-        // Tenant is already in this room and bed, no change needed for room/bed assignment itself.
-        // However, we might still want to update moveInDate or create a new booking record if that's the intent.
-        // For simplicity, we'll assume this function is for a *new* allocation or a *change* of room/bed.
-        // If it's just a data update for an existing allocation, updateTenant might be more appropriate.
-        console.log(`[allocateRoomToTenant] Tenant ${tenant.name} is already in room ${room.name}, bed ${bedNumber}. No change to room/bed assignment.`);
-        // Potentially update moveInDate if provided and different
-        if (moveInDate && new Date(tenant.moveInDate).toISOString().split('T')[0] !== new Date(moveInDate).toISOString().split('T')[0]) {
-            tenant.moveInDate = new Date(moveInDate);
-            // Consider if a new booking record should be created or existing one updated.
-        }
-        // Fall through to save tenant and potentially create booking if logic is added for it.
-    }
 
-
-    if (room.occupancy.current >= room.occupancy.max && !(tenant.status === 'Active' && tenant.room === room.name)) { 
-      // Room is full, and the tenant is not already counted in this room's occupancy
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({ error: `Room ${room.name} is already full.` });
-    }
-
-    const existingTenantInBed = await Tenant.findOne({ 
-      room: room.name, 
-      bedNumber: bedNumber, 
-      status: 'Active',
-      _id: { $ne: tenantId } 
-    }).session(session);
-
-    if (existingTenantInBed) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({ error: `Bed ${bedNumber} in room ${room.name} is already occupied by ${existingTenantInBed.name}.` });
-    }
-    
-    const wasPreviouslyInThisRoomAndBed = tenant.room === room.name && tenant.bedNumber === bedNumber && tenant.status === 'Active';
-
-    // Update tenant details
-    tenant.room = room.name;
-    tenant.bedNumber = bedNumber;
-    tenant.status = 'Active';
-    tenant.moveInDate = new Date(moveInDate);
-    tenant.moveOutDate = null;
-
-    // Update room occupancy only if the tenant wasn't already active in this exact room and bed
-    if (!wasPreviouslyInThisRoomAndBed) {
-        // If the tenant was in a different room, or not active, or in a different bed in the same room, then increment.
-        // The check for `room.occupancy.current < room.occupancy.max` is important here.
-        // If the tenant was already in this room (e.g. changing beds within the same room), occupancy doesn't change.
-        // This logic needs to be careful if the tenant is moving from another room (decrement old, increment new).
-        // The earlier block handles vacating the old room.
-        if (tenant.room !== room.name || tenant.bedNumber !== bedNumber || tenant.status !== 'Active') {
-             // Only increment if the tenant is newly occupying this specific bed in this room
-             // or moving from another room.
-             // If they were already in this room but inactive, or changing beds, this logic is fine.
-            if (room.occupancy.current < room.occupancy.max) {
-                room.occupancy.current += 1;
-                if (room.occupancy.current >= room.occupancy.max) {
-                    room.isBooked = true;
-                }
-            } else {
-                // This case should ideally be caught by the earlier check, but as a safeguard:
-                await session.abortTransaction();
-                session.endSession();
-                return res.status(400).json({ error: `Cannot allocate to room ${room.name} as it is full (safeguard).` });
+        // Vacate old room if tenant is moving and was active in another room
+        if (tenant.room && tenant.room.toString() !== roomId && tenant.status === 'Active') {
+            const oldRoom = await Room.findById(tenant.room);
+            if (oldRoom && oldRoom.occupancy.current > 0) {
+                oldRoom.occupancy.current -= 1;
+                oldRoom.isBooked = (oldRoom.occupancy.current >= oldRoom.occupancy.max);
+                await oldRoom.save();
+                console.log(`[tenantController-allocateRoomToTenant] Vacated old room ${oldRoom.name} for tenant ${tenant.name}`);
             }
         }
+        
+        // Update tenant details
+        tenant.room = roomId;
+        tenant.bedNumber = bedNumber || tenant.bedNumber; // Keep old bedNumber if new one not provided
+        tenant.status = 'Active';
+        // tenant.moveInDate = tenant.moveInDate || new Date(); // Consider if moveInDate should be updated here
+
+        // Update new room occupancy only if tenant is new to this room
+        if (!tenant.room || tenant.room.toString() !== roomId || (tenant.room.toString() === roomId && originalStatus !== 'Active')) { // If tenant was not in this room or was not active
+            if (room.occupancy.current < room.occupancy.max) { // Check again before incrementing
+                 room.occupancy.current += 1;
+                 room.isBooked = (room.occupancy.current >= room.occupancy.max);
+            } else if (tenant.room?.toString() !== roomId) { // If trying to move to a new room that just became full
+                 console.warn(`[tenantController-allocateRoomToTenant] Room ${room.name} became full before allocation.`);
+                 // Potentially revert tenant.room and tenant.bedNumber if old room was vacated
+                 return res.status(400).json({ error: `Room ${room.name} is full, allocation failed.`});
+            }
+        }
+        
+        await tenant.save();
+        await room.save();
+        console.log(`[tenantController-allocateRoomToTenant] Tenant ${tenant.name} allocated/updated to room ${room.name}, bed ${tenant.bedNumber}. Occupancy: ${room.occupancy.current}/${room.occupancy.max}`);
+
+        res.status(200).json({ message: 'Tenant allocated to room successfully', tenant });
+    } catch (error) {
+        console.error('[tenantController-allocateRoomToTenant] Error:', error);
+        res.status(500).json({ error: 'Failed to allocate room to tenant' });
     }
-
-
-    // Optional: Create or update a booking record.
-    // For simplicity, this example focuses on tenant and room state.
-    // A more robust implementation would create/update a Booking document here as well,
-    // similar to `allocateTenant`.
-    // For now, we'll assume a booking might be created separately or this is a simpler update.
-    // Example:
-    const newBooking = new Booking({
-        tenant: tenant._id,
-        room: room._id,
-        bedNumber: bedNumber,
-        startDate: new Date(moveInDate),
-        status: 'Active',
-        rentAmount: tenant.customRent || room.price,
-    });
-    await newBooking.save({ session });
-
-
-    await tenant.save({ session });
-    await room.save({ session });
-    
-    await session.commitTransaction();
-    session.endSession();
-
-    res.status(200).json({ 
-      message: 'Room allocated to tenant successfully.', 
-      tenant 
-    });
-
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    console.error("Error in allocateRoomToTenant:", error);
-    res.status(500).json({ error: error.message });
-  }
 };
+
 
 module.exports = {
   getTenants,
   addTenant,
   updateTenant,
   deleteTenant,
-  getTenantById,
-  allocateTenant, // Added export
-  getTenantHistory, // Added export
-  updateSecurityDeposit, // Added export
-  allocateRoomToTenant, // Added export
+  allocateTenant, // For /api/tenants/allocate (body: tenantId, roomId, bedNumber)
+  getTenantHistory,
+  updateSecurityDeposit,
+  allocateRoomToTenant // For /api/tenants/:tenantId/allocate-room/:roomId (body: bedNumber)
 };

@@ -89,24 +89,52 @@ const TenantsTab = ({
   };
 
   const getRoomTypeName = (roomConfigId) => {
-    if (!roomConfigurationTypes || !roomConfigId) return 'N/A';
+    if (!roomConfigurationTypes || roomConfigurationTypes.length === 0 || !roomConfigId) return 'N/A';
     const config = roomConfigurationTypes.find(rc => rc._id === roomConfigId);
     return config ? config.name : 'N/A';
   };
 
   const getRoomRent = (roomConfigId) => {
-    if (!roomConfigurationTypes || !roomConfigId) return 'N/A';
+    if (!roomConfigurationTypes || roomConfigurationTypes.length === 0 || !roomConfigId) return 'N/A';
     const config = roomConfigurationTypes.find(rc => rc._id === roomConfigId);
     return config ? `₹${config.baseRent}` : 'N/A';
   };
 
   // Render Tenant Row for Table
   const renderTenantRow = (tenant) => {
-    const roomName = tenant.room?.name || 'N/A';
-    // Ensure tenant.room.roomConfigurationType is accessed correctly, it might be an ID or an object
-    const roomConfigId = tenant.room?.roomConfigurationType?._id || tenant.room?.roomConfigurationType;
-    const roomTypeName = getRoomTypeName(roomConfigId);
-    const rentAmount = tenant.customRent ? `₹${tenant.customRent} (Custom)` : getRoomRent(roomConfigId);
+    let roomName = 'N/A';
+    let roomTypeName = 'N/A';
+    let rentAmountDisplay = 'N/A';
+    let roomObject = null; // Define roomObject here to use it for rent calculation
+
+    if (tenant.room && rooms && rooms.length > 0) {
+      roomObject = rooms.find(r => r._id === tenant.room); // tenant.room is expected to be an ID
+      if (roomObject) {
+        roomName = roomObject.name;
+        const roomConfigId = typeof roomObject.roomConfigurationType === 'object' && roomObject.roomConfigurationType !== null
+                           ? roomObject.roomConfigurationType._id
+                           : roomObject.roomConfigurationType;
+        roomTypeName = getRoomTypeName(roomConfigId);
+        
+        // Updated rent calculation logic
+        if (tenant.customRent) {
+          rentAmountDisplay = `₹${tenant.customRent} (Custom)`;
+        } else if (roomObject.price !== undefined && roomObject.price !== null && !isNaN(parseFloat(roomObject.price))) {
+          rentAmountDisplay = `₹${parseFloat(roomObject.price)}`;
+        } else {
+          rentAmountDisplay = getRoomRent(roomConfigId); // Falls back to baseRent from room config type
+        }
+      } else {
+        console.warn(`Tenant ${tenant.name} has room ID ${tenant.room} but no matching room found in props.`);
+        // If roomObject is not found, but tenant has customRent
+        if (tenant.customRent) {
+          rentAmountDisplay = `₹${tenant.customRent} (Custom)`;
+        }
+      }
+    } else if (tenant.customRent) { // Case where tenant might have custom rent but no room
+        rentAmountDisplay = `₹${tenant.customRent} (Custom)`;
+    }
+
 
     return (
       <tr key={tenant._id}>
@@ -118,12 +146,13 @@ const TenantsTab = ({
         <td><span className={`${styles.badge} ${getBadgeStyle(roomName !== 'N/A' ? 'Assigned' : 'Unassigned')}`}>{roomName}</span></td>
         <td><span className={`${styles.badge} ${getBadgeStyle(tenant.accommodationType, 'stay')}`}>{tenant.accommodationType || 'N/A'}</span></td>
         <td><span className={`${styles.badge} ${styles.badgeRoomType}`}>{roomTypeName}</span></td>
-        <td>{rentAmount}</td>
+        <td>{rentAmountDisplay}</td>
         <td><span className={`${styles.badge} ${getBadgeStyle(tenant.status, 'status')}`}>{tenant.status}</span></td>
         <td className={styles.actionCell}>
-          <button onClick={() => onEditTenant(tenant)} className={`${styles.editButton} ${styles.iconButton}`}>✏️ Edit</button>
-          <button onClick={() => onDeleteTenant(tenant._id)} className={`${styles.deleteButton} ${styles.iconButton}`}>🗑️ Delete</button>
-          <button onClick={() => handleViewHistory(tenant)} className={`${styles.historyButton} ${styles.iconButton}`}>📜 History</button>
+          <button onClick={() => onEditTenant(tenant)} className={`${styles.actionButton} ${styles.editButton}`}>✏️ Edit/Assign Room</button>
+          <button onClick={() => onDeleteTenant(tenant._id)} className={`${styles.actionButton} ${styles.deleteButton}`}>🗑️ Delete</button>
+          <button onClick={() => handleViewHistory(tenant)} className={`${styles.actionButton} ${styles.historyButton}`}>📜 History</button>
+          <button onClick={() => alert(`Rent Payment for ${tenant.name}`)} className={`${styles.actionButton} ${styles.rentPaymentButton}`}>💰 Rent Payment</button>
         </td>
       </tr>
     );
@@ -131,10 +160,38 @@ const TenantsTab = ({
 
   // Render Tenant Card for Mobile
   const renderTenantCard = (tenant) => {
-    const roomName = tenant.room?.name || 'N/A';
-    const roomConfigId = tenant.room?.roomConfigurationType?._id || tenant.room?.roomConfigurationType;
-    const roomTypeName = getRoomTypeName(roomConfigId);
-    const rentAmount = tenant.customRent ? `₹${tenant.customRent} (Custom)` : getRoomRent(roomConfigId);
+    let roomName = 'N/A';
+    let roomTypeName = 'N/A';
+    let rentAmountDisplay = 'N/A';
+    let roomObject = null; // Define roomObject here
+
+    if (tenant.room && rooms && rooms.length > 0) {
+      roomObject = rooms.find(r => r._id === tenant.room);
+      if (roomObject) {
+        roomName = roomObject.name;
+        const roomConfigId = typeof roomObject.roomConfigurationType === 'object' && roomObject.roomConfigurationType !== null
+                           ? roomObject.roomConfigurationType._id
+                           : roomObject.roomConfigurationType;
+        roomTypeName = getRoomTypeName(roomConfigId);
+
+        // Updated rent calculation logic
+        if (tenant.customRent) {
+          rentAmountDisplay = `₹${tenant.customRent} (Custom)`;
+        } else if (roomObject.price !== undefined && roomObject.price !== null && !isNaN(parseFloat(roomObject.price))) {
+          rentAmountDisplay = `₹${parseFloat(roomObject.price)}`;
+        } else {
+          rentAmountDisplay = getRoomRent(roomConfigId); // Falls back to baseRent from room config type
+        }
+      } else {
+        console.warn(`Tenant ${tenant.name} (card view) has room ID ${tenant.room} but no matching room found in props.`);
+        // If roomObject is not found, but tenant has customRent
+        if (tenant.customRent) {
+          rentAmountDisplay = `₹${tenant.customRent} (Custom)`;
+        }
+      }
+    } else if (tenant.customRent) { // Case where tenant might have custom rent but no room
+        rentAmountDisplay = `₹${tenant.customRent} (Custom)`;
+    }
 
     return (
       <div key={tenant._id} className={styles.tenantCard}>
@@ -148,11 +205,12 @@ const TenantsTab = ({
         <p><strong>Room:</strong> <span className={`${styles.badge} ${getBadgeStyle(roomName !== 'N/A' ? 'Assigned' : 'Unassigned')}`}>{roomName}</span></p>
         <p><strong>Stay Type:</strong> <span className={`${styles.badge} ${getBadgeStyle(tenant.accommodationType, 'stay')}`}>{tenant.accommodationType || 'N/A'}</span></p>
         <p><strong>Room Type:</strong> <span className={`${styles.badge} ${styles.badgeRoomType}`}>{roomTypeName}</span></p>
-        <p><strong>Rent:</strong> {rentAmount}</p>
+        <p><strong>Rent:</strong> {rentAmountDisplay}</p>
         <div className={styles.tenantCardActions}>
-          <button onClick={() => onEditTenant(tenant)} className={`${styles.editButton} ${styles.iconButton}`}>✏️ Edit</button>
-          <button onClick={() => onDeleteTenant(tenant._id)} className={`${styles.deleteButton} ${styles.iconButton}`}>🗑️ Delete</button>
-          <button onClick={() => handleViewHistory(tenant)} className={`${styles.historyButton} ${styles.iconButton}`}>📜 History</button>
+          <button onClick={() => onEditTenant(tenant)} className={`${styles.actionButton} ${styles.editButton}`}>✏️ Edit/Assign Room</button>
+          <button onClick={() => onDeleteTenant(tenant._id)} className={`${styles.actionButton} ${styles.deleteButton}`}>🗑️ Delete</button>
+          <button onClick={() => handleViewHistory(tenant)} className={`${styles.actionButton} ${styles.historyButton}`}>📜 History</button>
+          <button onClick={() => alert(`Rent Payment for ${tenant.name}`)} className={`${styles.actionButton} ${styles.rentPaymentButton}`}>💰 Rent Payment</button>
         </div>
       </div>
     );
@@ -223,7 +281,7 @@ const TenantsTab = ({
             {unallocatedTenants.map(tenant => (
               <li key={tenant._id}>
                 {tenant.name} ({tenant.contact}) - Preferred Type: {getRoomTypeName(tenant.preferredRoomType)}
-                <button onClick={() => onEditTenant(tenant)} style={{ marginLeft: '10px'}} className={`${styles.editButton} ${styles.iconButton}`}>✏️ Assign Room / Edit</button>
+                <button onClick={() => onEditTenant(tenant)} style={{ marginLeft: '10px'}} className={`${styles.actionButton} ${styles.editButton}`}>✏️ Assign Room / Edit</button>
               </li>
             ))}
           </ul>

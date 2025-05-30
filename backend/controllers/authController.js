@@ -32,3 +32,20 @@ exports.login = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+// New controller function to get current user details
+exports.getMe = async (req, res) => {
+  try {
+    console.log('GetMe: req.user from middleware:', req.user); // Added log
+    // User is attached to req object by the auth middleware
+    const user = await User.findById(req.user.id).select('-password'); // Exclude password
+    console.log('GetMe: User found by ID:', user); // Added log
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.status(200).json(user);
+  } catch (error) {
+    console.error('GetMe: Error in /me route:', error); // Modified log
+    res.status(500).json({ error: 'Server error while fetching user details' });
+  }
+};

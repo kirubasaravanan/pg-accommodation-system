@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import { addUser } from '../api'; // Corrected import path
+import styles from './UserManagementForms.module.css';
 
 // Define the roles based on your backend User model
 const ROLES = ['Admin', 'Manager', 'Staff', 'Accountant', 'Tenant'];
-const API_BASE_URL = 'http://localhost:5000';
 
-function AddUserForm({ token, onUserAdded }) { // Added onUserAdded callback
+function AddUserForm({ onUserAdded }) { // Removed token prop, kept onUserAdded callback
   const [newUser, setNewUser] = useState({ 
     name: '', 
     username: '', // Changed from email to username
@@ -26,9 +26,7 @@ function AddUserForm({ token, onUserAdded }) { // Added onUserAdded callback
     setSuccessMessage('');
     try {
       // Use the admin route for creating users
-      const response = await axios.post(`${API_BASE_URL}/api/users`, newUser, {
-        headers: { Authorization: `Bearer ${token}` }, // Ensure Bearer token format
-      });
+      const response = await addUser(newUser); // Use apiClient
       setSuccessMessage(response.data.message || 'User added successfully!');
       setNewUser({ name: '', username: '', password: '', role: ROLES[ROLES.length -1] }); // Reset form
       if (onUserAdded) {

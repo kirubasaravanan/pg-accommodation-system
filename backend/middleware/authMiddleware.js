@@ -17,11 +17,11 @@ const protect = (req, res, next) => { // Renamed from authenticate to protect fo
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    // console.log('JWT DECODED:', decoded); // DEBUG: print the decoded payload
+    console.log('AuthMiddleware: Token decoded successfully', decoded); // Added log
     req.user = decoded; // Assuming decoded payload contains user info including role
     next();
   } catch (error) {
-    // console.error('JWT VERIFY ERROR:', error); // DEBUG: print error details
+    console.error('AuthMiddleware: JWT verification error', error); // Modified log
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({ message: 'Token expired.' });
     }

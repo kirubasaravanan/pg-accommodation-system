@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { apiClientInstance as apiClient } from '../api'; // Corrected import to use apiClientInstance
+import styles from './UserManagementForms.module.css';
 
 const ROLES = ['Admin', 'Manager', 'Staff', 'Accountant', 'Tenant'];
 const STATUSES = ['active', 'blocked', 'inactive'];
-const API_BASE_URL = 'http://localhost:5000';
 
-function EditUserForm({ token, userToEdit, onUserUpdated, onCancel }) {
+function EditUserForm({ userToEdit, onUserUpdated, onCancel }) { // Removed token prop
   const [formData, setFormData] = useState({ name: '', username: '', role: '', status: '' });
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -35,9 +35,10 @@ function EditUserForm({ token, userToEdit, onUserUpdated, onCancel }) {
       return;
     }
     try {
-      const response = await axios.put(`${API_BASE_URL}/api/users/${userToEdit._id}`, formData, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // const response = await axios.put(`${API_BASE_URL}/api/users/${userToEdit._id}`, formData, {
+      //   headers: { Authorization: `Bearer ${token}` },
+      // });
+      const response = await apiClient.put(`/api/users/${userToEdit._id}`, formData); // Use apiClient
       setSuccessMessage(response.data.message || 'User updated successfully!');
       if (onUserUpdated) {
         onUserUpdated();

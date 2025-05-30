@@ -61,7 +61,7 @@ const RoomConfigurationModal = ({ onClose, existingConfiguration, onSave }) => {
       isConvertible,
       convertedSharingCapacity: isConvertible ? Number(convertedSharingCapacity) : null,
       convertedRent: isConvertible ? Number(convertedRent) : null,
-      acStatus,
+      acStatus, // Ensure acStatus is included
       description,
     };
 
@@ -215,7 +215,9 @@ const RoomConfigurationModal = ({ onClose, existingConfiguration, onSave }) => {
             required
           >
             <option value="Non-AC (Standard)">Non-AC (Standard)</option>
-            <option value="AC Provisioned (Future Option)">AC Provisioned (Future Option)</option>
+            <option value="Non-AC (Cooler Space)">Non-AC (Cooler Space)</option>
+            <option value="AC (Standard)">AC (Standard)</option>
+            <option value="AC (Customizable)">AC (Customizable)</option>
           </select>
         </div>
 

@@ -179,6 +179,12 @@ const EditTenantModal = ({
     console.log('[EditTenantModal] Value of onSaveTenant in handleSubmit:', onSaveTenant);
     console.log('[EditTenantModal] Type of onSaveTenant in handleSubmit:', typeof onSaveTenant);
 
+    // Enhanced logging for required fields
+    console.log('[EditTenantModal] Checking data before save:');
+    console.log(`[EditTenantModal] Name: "${tenantData.name}" (Type: ${typeof tenantData.name})`);
+    console.log(`[EditTenantModal] Contact: "${tenantData.contact}" (Type: ${typeof tenantData.contact})`);
+    console.log(`[EditTenantModal] Email: "${tenantData.email}" (Type: ${typeof tenantData.email})`);
+
     if (typeof onSaveTenant === 'function') {
       const dataToSave = {
         ...tenantData,
@@ -187,10 +193,27 @@ const EditTenantModal = ({
         // Ensure preferredRoomType is just the ID string or null
         preferredRoomType: tenantData.preferredRoomType || null,
       };
+
+      // Ensure securityDeposit.amount is a number or null
+      if (dataToSave.securityDeposit) {
+        if (typeof dataToSave.securityDeposit.amount === 'string' && dataToSave.securityDeposit.amount.trim() !== '') {
+          const amountNum = parseFloat(dataToSave.securityDeposit.amount);
+          dataToSave.securityDeposit.amount = isNaN(amountNum) ? null : amountNum;
+        } else if (dataToSave.securityDeposit.amount === '' || dataToSave.securityDeposit.amount === undefined || dataToSave.securityDeposit.amount === null) {
+          // If it's an empty string, undefined or already null, set to null.
+          // Backend should handle how null amount is interpreted (e.g., 0 or not set).
+          dataToSave.securityDeposit.amount = null; 
+        }
+        // If it's already a number, it's fine.
+      }
+
+
       // Remove _id if it's for a new tenant and it's an empty string from initialTenantFormState
       if (!dataToSave._id) {
         delete dataToSave._id;
       }
+
+      console.log('[EditTenantModal] Data being sent to onSaveTenant:', JSON.stringify(dataToSave, null, 2)); // Log the data
 
       // If an Aadhar file is selected, it should be handled here.
       // Typically, this would involve FormData if uploading directly,
@@ -199,13 +222,15 @@ const EditTenantModal = ({
       // would require more extensive changes (e.g., API endpoint, FormData).
       if (aadharFile) {
         console.log('[EditTenantModal] Aadhar file selected:', aadharFile.name);
-        // dataToSave.aadharFile = aadharFile; // Don't add the file object directly to JSON
+        // Pass the file object along with the tenant data
+        onSaveTenant(dataToSave, aadharFile);
+      } else {
+        onSaveTenant(dataToSave, null); // Pass null if no file is selected
       }
       
-      onSaveTenant(dataToSave);
     } else {
-      console.error('[EditTenantModal] ERROR: onSaveTenant is not a function inside handleSubmit!');
-      alert('Save operation failed: onSaveTenant is not correctly configured.');
+      console.error("[EditTenantModal] onSaveTenant is not a function! Received:", onSaveTenant);
+      alert("Error: Save function is not available. Please contact support.");
     }
   };
 
@@ -238,7 +263,7 @@ const EditTenantModal = ({
 
 
             <label style={labelStyle}>Email ID:</label>
-            <input name="email" type="email" value={tenantData.email || ''} onChange={handleChange} style={inputStyle} />
+            <input name="email" type="email" value={tenantData.email || ''} onChange={handleChange} style={inputStyle} required />
 
             <label style={labelStyle}>Date of Birth:</label>
             <input name="dob" type="date" value={tenantData.dob ? tenantData.dob.split('T')[0] : ''} onChange={handleChange} style={inputStyle} />
@@ -256,7 +281,7 @@ const EditTenantModal = ({
             <label style={labelStyle}>Stay Type (Accommodation Type):</label>
             <select name="accommodationType" value={tenantData.accommodationType} onChange={handleChange} style={selectStyle}>
               {ACCOMMODATION_TYPES.map(type => (
-                <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</option>
+                <option key={type.value} value={type.value}>{type.label}</option>
               ))}
             </select>
 

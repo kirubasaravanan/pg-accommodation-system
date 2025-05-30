@@ -198,19 +198,19 @@ const EditRoomModal = ({
   //    OR tenant is currently assigned to THIS room (to allow re-shuffling within the room).
   const availableTenantsForBeds = tenants && selectedConfig ? tenants.filter(tenant => {
     const isTenantActive = tenant.status === 'Active';
-    const tenantPreferredType = tenant.preferredRoomType?._id || tenant.preferredRoomType;
-    const roomConfigType = selectedConfig._id;
-    const preferredTypeMatches = tenantPreferredType === roomConfigType;
+    const tenantPreferredTypeId = tenant.preferredRoomType?._id || tenant.preferredRoomType;
+    const roomConfigTypeId = selectedConfig._id;
+    const preferredTypeMatches = tenantPreferredTypeId === roomConfigTypeId;
 
-    // Condition for being "unassigned" or pending
     const isUnassignedOrPending = !tenant.room || tenant.room === '' || tenant.status === 'Pending Allocation';
-    
-    // Condition for being assigned to the current editing room
-    const isAssignedToThisRoom = tenant.room === editingRoom.name || tenant.room === editingRoom._id;
+    const isAssignedToThisRoom = tenant.room === editingRoom._id || (editingRoom.name && tenant.room === editingRoom.name); // Check by ID first, then by name as a fallback
 
+    // A tenant is available if:
+    // 1. They are active AND their preferred room type matches the current room's type.
+    // 2. AND (They are unassigned/pending OR they are already in this specific room).
     return isTenantActive && preferredTypeMatches && (isUnassignedOrPending || isAssignedToThisRoom);
   }) : [];
-  // console.log('[EditRoomModal] Available tenants for beds:', availableTenantsForBeds.map(t => ({name: t.name, id: t._id, preferred: t.preferredRoomType, room: t.room })));
+  // console.log('[EditRoomModal] Available tenants for beds (initial filter):', availableTenantsForBeds.map(t => ({name: t.name, id: t._id, preferred: t.preferredRoomType, room: t.room, status: t.status })));
 
 
   return (
@@ -315,15 +315,16 @@ const EditRoomModal = ({
                       )}
                       {/* Options for other available tenants */}
                       {availableTenantsForBeds
-                        .filter(t => 
-                          t._id !== currentTenantIdInBed && // Don't show if already listed as "Currently Assigned"
-                          (                                 // And tenant is either unassigned OR assigned to this bed
-                            !t.room || t.room === '' || t.status === 'Pending Allocation' || t.room === editingRoom.name || t.room === editingRoom._id
-                          ) &&
-                          ( // And tenant is not assigned to another bed in this room already
-                            !Object.values(bedAssignments).includes(t._id) || currentTenantIdInBed === t._id 
-                          )
-                        )
+                        .filter(t => {
+                          // Condition 1: Tenant is not the one currently in this bed (unless the bed is vacant)
+                          const isNotCurrentlyInThisBed = t._id !== currentTenantIdInBed || !currentTenantIdInBed;
+                          
+                          // Condition 2: Tenant is not assigned to any *other* bed in this modal's current state
+                          const isNotInOtherBedsInModal = !Object.entries(bedAssignments)
+                            .some(([bedKey, tenantIdInBed]) => `bed_${index}` !== bedKey && tenantIdInBed === t._id);
+
+                          return isNotCurrentlyInThisBed && isNotInOtherBedsInModal;
+                        })
                         .map(tenant => (
                           <option key={tenant._id} value={tenant._id}>
                             {tenant.name} (Pref: {roomConfigurationTypes.find(rc => rc._id === (tenant.preferredRoomType?._id || tenant.preferredRoomType))?.name || 'N/A'})

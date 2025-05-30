@@ -9,11 +9,10 @@ const AllocateRoomModal = ({
   tenantName,
   preferredRoomConfigId, 
   allRoomConfigs, 
-  token,
   onAllocationSuccess
 }) => {
   const [currentStep, setCurrentStep] = useState('initialCheck'); 
-  const [selectedRoomConfigId, setSelectedRoomConfigId] = useState(null); // Stores ID of user-selected alternative type
+  const [selectedRoomConfigId, setSelectedRoomConfigId] = useState(null); 
   const [availableRooms, setAvailableRooms] = useState([]);
   const [alternativeRoomTypesToShow, setAlternativeRoomTypesToShow] = useState([]);
   const [selectedRoomId, setSelectedRoomId] = useState('');
@@ -21,48 +20,45 @@ const AllocateRoomModal = ({
   const [isLoading, setIsLoading] = useState(false);
 
   const preferredRoomConfig = allRoomConfigs.find(rc => rc._id === preferredRoomConfigId);
-  const preferredRoomConfigName = preferredRoomConfig ? preferredRoomConfig.name : 'the selected type';
+  const preferredRoomConfigName = preferredRoomConfig ? preferredRoomConfig.name : 'the specified preferred type';
 
-  // Initial search: based on capacity of the tenant's preferred room type
+  // Initial search: based on the tenant's preferred room type ID
   const performInitialRoomSearch = useCallback(async (initialPreferredConfigId) => {
     if (!initialPreferredConfigId) {
-      setMessage('No preferred room type specified by the registration form.');
+      setMessage('No preferred room type specified by the tenant.');
       setCurrentStep('error');
       return;
     }
     setIsLoading(true);
-    setMessage('Checking availability based on your preference...');
+    // Find the name of the preferred config for messages
+    const currentPreferredConfigDetails = allRoomConfigs.find(rc => rc._id === initialPreferredConfigId);
+    const currentPreferredConfigName = currentPreferredConfigDetails ? currentPreferredConfigDetails.name : 'the preferred type';
+    setMessage(`Checking availability for your preferred room type: '${currentPreferredConfigName}'...`);
 
     try {
-      const roomsResponse = await fetchRooms(token);
+      const roomsResponse = await fetchRooms(); // Token no longer passed
       const allFetchedRooms = roomsResponse.data || [];
-      const preferredConfigDetails = allRoomConfigs.find(rc => rc._id === initialPreferredConfigId);
+      
+      // Filter rooms that match the preferred room configuration ID and have vacancy
+      const matchedRooms = allFetchedRooms.filter(room => {
+        // Ensure room.roomConfigurationType is treated as an ID string for comparison
+        const roomConfigTypeID = typeof room.roomConfigurationType === 'object' && room.roomConfigurationType !== null
+                               ? room.roomConfigurationType._id
+                               : room.roomConfigurationType;
+        return roomConfigTypeID === initialPreferredConfigId &&
+               room.occupancy.current < room.occupancy.max &&
+               !room.isBooked;
+      });
 
-      if (!preferredConfigDetails) {
-        setMessage('Details for the preferred room type are missing. Cannot determine target capacity.');
-        setCurrentStep('error');
-        setIsLoading(false);
-        return;
-      }
-
-      const targetCapacity = preferredConfigDetails.baseSharingCapacity;
-      const localPreferredConfigName = preferredConfigDetails.name;
-
-      const capacityMatchedRooms = allFetchedRooms.filter(room =>
-        room.occupancy.max === targetCapacity &&
-        room.occupancy.current < room.occupancy.max &&
-        !room.isBooked
-      );
-
-      if (capacityMatchedRooms.length > 0) {
-        setAvailableRooms(capacityMatchedRooms);
+      if (matchedRooms.length > 0) {
+        setAvailableRooms(matchedRooms);
         setCurrentStep('showAvailableRooms');
-        setMessage(`Found rooms with capacity ${targetCapacity} (based on your preference for '${localPreferredConfigName}'). Please select one:`);
+        setMessage(`Found available rooms of your preferred type: '${currentPreferredConfigName}'. Please select one:`);
       } else {
         const alternativeTypes = allRoomConfigs.filter(rc => rc._id !== initialPreferredConfigId);
         setAlternativeRoomTypesToShow(alternativeTypes);
         setCurrentStep('showAlternatives');
-        setMessage(`Sorry, no rooms with capacity ${targetCapacity} (preference: '${localPreferredConfigName}') are currently available. You can choose an alternative type below:`);
+        setMessage(`Sorry, no rooms of your preferred type ('${currentPreferredConfigName}') are currently available. You can choose an alternative type below or check if other criteria (like capacity) led to this:`);
       }
     } catch (error) {
       console.error("Error during initial room search:", error);
@@ -71,7 +67,7 @@ const AllocateRoomModal = ({
     } finally {
       setIsLoading(false);
     }
-  }, [token, allRoomConfigs]);
+  }, [allRoomConfigs]); // Removed token from dependencies
 
   // Search for rooms of a specific alternative type chosen by the user from the list
   const findRoomsForSelectedAlternative = useCallback(async (alternativeConfigId) => {
@@ -85,7 +81,7 @@ const AllocateRoomModal = ({
     setMessage(`Checking availability for '${selectedAlternativeName}'...`);
 
     try {
-      const roomsResponse = await fetchRooms(token);
+      const roomsResponse = await fetchRooms(); // Token no longer passed
       const allFetchedRooms = roomsResponse.data || [];
       
       const roomsOfExactType = allFetchedRooms.filter(room => {
@@ -116,7 +112,7 @@ const AllocateRoomModal = ({
     } finally {
       setIsLoading(false);
     }
-  }, [token, allRoomConfigs]);
+  }, [allRoomConfigs]); // Removed token from dependencies
 
   useEffect(() => {
     if (show && tenantId && preferredRoomConfigId) {
@@ -151,7 +147,7 @@ const AllocateRoomModal = ({
     setIsLoading(true);
     console.log('Allocating Room - Tenant ID:', tenantId, 'Room ID:', selectedRoomId); // Log IDs
     try {
-      await allocateRoomToTenantApi(tenantId, selectedRoomId, token);
+      await allocateRoomToTenantApi(tenantId, selectedRoomId); // Token no longer passed
       const roomDetails = availableRooms.find(r => r._id === selectedRoomId);
       setMessage(`Room ${roomDetails ? roomDetails.name : selectedRoomId} allocated to ${tenantName} successfully!`);
       setCurrentStep('allocated');

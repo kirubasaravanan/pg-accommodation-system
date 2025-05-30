@@ -1,13 +1,19 @@
 import axios from 'axios';
 
+console.log('[api.js] Current NODE_ENV:', process.env.NODE_ENV); // Log 1
+
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
     ? 'YOUR_PRODUCTION_API_URL' // Replace with your actual production URL
-    : 'http://172.20.10.2:5000'; // Your local network IP for development
+    : 'http://localhost:5000'; // Use localhost for development
+
+console.log('[api.js] API_BASE_URL set to:', API_BASE_URL); // Log 2
 
 // Create an Axios instance
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
 });
+
+console.log('[api.js] apiClient created with baseURL:', apiClient.defaults.baseURL); // Log 3
 
 // Add a request interceptor to include the token in headers
 apiClient.interceptors.request.use(
@@ -30,8 +36,6 @@ apiClient.interceptors.response.use(
     if (error.response && error.response.status === 401) {
       // Token is invalid or expired
       console.error("API Error: 401 Unauthorized. Token might be invalid or expired.", error.config.url);
-      localStorage.removeItem('token'); // Clear the invalid token
-      localStorage.removeItem('user'); // Clear user data
       // Redirect to login page
       // Ensure this doesn't cause a loop if the login page itself makes API calls that could 401
       if (!window.location.pathname.includes('/login')) {
@@ -42,9 +46,14 @@ apiClient.interceptors.response.use(
   }
 );
 
+export const apiClientInstance = apiClient; // Exporting the apiClient instance
 
 export const login = async (credentials) => {
   return apiClient.post('/api/auth/login', credentials);
+};
+
+export const getMe = async () => { // New function to fetch current user details
+  return apiClient.get('/api/auth/me');
 };
 
 export const addRoom = async (roomData) => { // Removed token param

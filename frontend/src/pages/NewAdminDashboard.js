@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import styles from './NewAdminDashboard.module.css';
-import UserManagementConsole from '../components/UserManagementConsole';
-import RoomConfigurationManagement from '../components/RoomConfigurationManagement';
+// import UserManagementConsole from '../components/UserManagementConsole'; // Not directly used in Admin Console view
+// import RoomConfigurationManagement from '../components/RoomConfigurationManagement'; // Not directly used
 import RoomsTab from './RoomsTab';
 import EditRoomModal from '../components/EditRoomModal';
 import SummaryCard from '../components/SummaryCard';
@@ -14,7 +14,7 @@ import Sidebar from '../components/Sidebar';
 import ComingSoon from './ComingSoon';
 import ReportsPage from './ReportsPage';
 import RoomBookingPage from './RoomBookingPage';
-import AdminConsole from './AdminConsole.tsx'; // Import AdminConsole with .tsx extension
+import AdminConsole from './AdminConsole.tsx';
 
 import { 
   fetchRooms, 
@@ -28,16 +28,17 @@ import {
   deleteTenant 
 } from '../api';
 
-// Define these constants, or ensure they are correctly sourced if defined elsewhere
-const ACCOMMODATION_TYPES = ['Single', 'Shared', 'Premium', 'Private Mini','Private','Double Occupancy','Triple Occupancy','Four Occupancy','Five Occupancy']; // Example, adjust as needed
-const RENT_STATUS = ['paid', 'due', 'partial', 'overdue']; // Example, adjust as needed
+const RENT_STATUS = ['paid', 'due', 'partial'];
+const ACCOMMODATION_TYPES = [
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'daily', label: 'Daily' }
+]; 
 
-// Helper to map path to tab name
 const pathToTabName = (path) => {
   if (!path) return 'Dashboard';
-  const lastSegment = path.substring(path.lastIndexOf('/') + 1);
-  const queryParamsIndex = lastSegment.indexOf('?');
-  const cleanSegment = queryParamsIndex === -1 ? lastSegment : lastSegment.substring(0, queryParamsIndex);
+  const pathWithoutHashAndQuery = path.split('#')[0].split('?')[0];
+  const lastSegment = pathWithoutHashAndQuery.substring(pathWithoutHashAndQuery.lastIndexOf('/') + 1);
+  const cleanSegment = lastSegment;
 
   switch (cleanSegment) {
     case 'dashboard': return 'Dashboard';
@@ -49,16 +50,29 @@ const pathToTabName = (path) => {
     case 'ai-chatbot': return 'AI Chatbot';
     case 'registration': return 'Registration';
     case 'admin-console': return 'Admin Console';
-    // Add cases for admin-console sub-pages if they should set a specific main tab
-    // or handle them within the Admin Console section logic
     default:
-      // If the path is just /new-dashboard or an unrecognized sub-path, default to Dashboard
-      if (path === '/new-dashboard' || path === '/new-dashboard/') return 'Dashboard';
-      // If it's a sub-page of admin-console, keep Admin Console tab active
-      if (path.startsWith('/new-dashboard/admin-console/')) return 'Admin Console';
-      return 'Dashboard'; // Fallback
+      if (pathWithoutHashAndQuery === '/new-dashboard' || pathWithoutHashAndQuery === '/new-dashboard/') {
+        return 'Dashboard';
+      }
+      if (pathWithoutHashAndQuery.startsWith('/new-dashboard/admin-console')) {
+        return 'Admin Console';
+      }
+      return 'Dashboard'; 
   }
 };
+
+// Define menuItems for the Sidebar
+const menuItems = [
+  { name: 'Dashboard', path: '/new-dashboard/dashboard' }, 
+  { name: 'Room Booking', path: '/new-dashboard/room-booking' },
+  { name: 'Tenants', path: '/new-dashboard/tenants' },
+  { name: 'Registration', path: '/new-dashboard/registration' }, 
+  { name: 'Rent Payment', path: '/new-dashboard/rent-payment' },
+  { name: 'Reports', path: '/new-dashboard/reports' },
+  { name: 'Complaints', path: '/new-dashboard/complaints' },
+  { name: 'AI Chatbot', path: '/new-dashboard/ai-chatbot' },
+  { name: 'Admin Console', path: '/new-dashboard/admin-console' },
+];
 
 const NewAdminDashboard = () => {
   const location = useLocation();
@@ -67,27 +81,19 @@ const NewAdminDashboard = () => {
   // Initialize activeTab based on the current URL path
   const [activeTab, setActiveTab] = useState(() => pathToTabName(location.pathname));
   const [currentDate, setCurrentDate] = useState('');
-  const [showRoomsAndRentSetup, setShowRoomsAndRentSetup] = useState(false); // New state
-
-  // State for other tabs - these might become redundant if activeTab fully controls content
-  // For now, let's keep them to see how they interact with the new routing logic
-  const [showRoomBooking, setShowRoomBooking] = useState(activeTab === 'Room Booking');
-  const [showRentPayment, setShowRentPayment] = useState(activeTab === 'Rent Payment');
-  const [showReports, setShowReports] = useState(activeTab === 'Reports');
-  const [showComplaints, setShowComplaints] = useState(activeTab === 'Complaints');
-  const [showAIChatbot, setShowAIChatbot] = useState(activeTab === 'AI Chatbot');
 
   // State for EditTenantModal
   const [showEditTenantModal, setShowEditTenantModal] = useState(false);
   const [currentEditingTenantData, setCurrentEditingTenantData] = useState(null);
 
+  // State for room configuration types, now managed here
+  const [roomConfigurationTypes, setRoomConfigurationTypes] = useState([]);
+  const [isLoadingRoomConfigs, setIsLoadingRoomConfigs] = useState(false);
+
   // Update activeTab when URL changes (e.g., browser back/forward)
   useEffect(() => {
     const newTabName = pathToTabName(location.pathname);
     setActiveTab(newTabName);
-
-    // Update visibility states based on the new tab name from URL
-    setShowRoomsAndRentSetup(false);
 
   }, [location.pathname]);
 
@@ -120,7 +126,6 @@ const NewAdminDashboard = () => {
 
   const [rooms, setRooms] = useState([]);
   const [tenants, setTenants] = useState([]);
-  const [roomConfigurationTypes, setRoomConfigurationTypes] = useState([]);
   const [filteredRooms, setFilteredRooms] = useState([]);
   const [roomForm, setRoomForm] = useState({
     name: '',
@@ -159,6 +164,27 @@ const NewAdminDashboard = () => {
   const [showAllocateRoomModal, setShowAllocateRoomModal] = useState(false);
   const [tenantForAllocation, setTenantForAllocation] = useState(null); // { id, name, preferredRoomConfigId }
 
+  // New function to fetch/refresh room configuration types
+  const refreshRoomConfigurationTypes = useCallback(async () => {
+    console.log('[NewAdminDashboard] refreshRoomConfigurationTypes CALLED. Timestamp:', Date.now());
+    setIsLoadingRoomConfigs(true);
+    try {
+      const response = await fetchRoomConfigurationTypes(); // API call
+      console.log('[NewAdminDashboard] fetchRoomConfigurationTypes API response STATUS:', response.status);
+      console.log('[NewAdminDashboard] fetchRoomConfigurationTypes API response.data:', response.data);
+      const dataToSet = Array.isArray(response.data) ? response.data : [];
+      setRoomConfigurationTypes(dataToSet);
+      console.log('[NewAdminDashboard] roomConfigurationTypes STATE SET with (length):', dataToSet.length, 'Data:', dataToSet, 'Timestamp:', Date.now());
+    } catch (error) {
+      console.error("[NewAdminDashboard] Error fetching room configuration types:", error.response ? error.response.data : error.message, error);
+      setRoomConfigurationTypes([]); // Set to empty array on error
+      // Optionally, set an error state to display to the user
+    } finally {
+      setIsLoadingRoomConfigs(false);
+      console.log('[NewAdminDashboard] refreshRoomConfigurationTypes FINISHED. isLoadingRoomConfigs is now false. Timestamp:', Date.now());
+    }
+  }, []); // Empty dependency array as it uses no external state other than setters
+
   const [dashboardSummary, setDashboardSummary] = useState({
     rentForecast: 0,
     rentReceived: 0,
@@ -194,9 +220,8 @@ const NewAdminDashboard = () => {
       const fetchedTenants = tenantsRes.data || [];
       setTenants(fetchedTenants);
 
-      const roomConfigTypesRes = await fetchRoomConfigurationTypes(); // Token no longer passed
-      // Ensure that roomConfigTypesRes.data is an array, or default to an empty array.
-      setRoomConfigurationTypes(Array.isArray(roomConfigTypesRes.data) ? roomConfigTypesRes.data : []);
+      // Call the new refresh function for room configs
+      await refreshRoomConfigurationTypes();
       
       let forecast = 0;
       let received = 0;
@@ -280,9 +305,9 @@ const NewAdminDashboard = () => {
         alert("Failed to fetch dashboard data. Please try again later.");
       }
     }
-  }, []); // Dependency array is empty
+}, [refreshRoomConfigurationTypes]); // Added refreshRoomConfigurationTypes to dependency array
 
-  useEffect(() => {
+useEffect(() => {
     const currentToken = localStorage.getItem('token');
     if (!currentToken || currentToken === 'undefined' || currentToken === 'null') {
       console.warn("[NewAdminDashboard useEffect] No token found, redirecting to login.");
@@ -415,103 +440,16 @@ const NewAdminDashboard = () => {
     }
   };
 
-
-  const menuItems = [
-    { name: 'Dashboard', icon: '📊' },
-    { name: 'Room Booking', icon: '🛏️' },
-    { name: 'Tenants', icon: '👥' },
-    { name: 'Rent Payment', icon: '💳' },
-    { name: 'Reports', icon: '📄' },
-    { name: 'Complaints', icon: '🗣️' },
-    { name: 'AI Chatbot', icon: '🤖' },
-    { name: 'Registration', icon: '📝' },
-    { name: 'Admin Console', icon: '⚙️' },
-  ];
-
-  // adminConsoleItems is no longer needed here if AdminConsole.tsx defines its own modules
-  // const adminConsoleItems = [...]; 
-
-  // handleAdminConsoleCardClick and handleBackToAdminConsole are no longer needed here
-  // as AdminConsole.tsx handles its own navigation and display logic.
-  // const handleAdminConsoleCardClick = (path) => { ... };
-  // const handleBackToAdminConsole = () => { ... };
-
-  // ...existing form handlers: handleRoomFormChange, handleEditModalFormChange, handleTenantFormChange...
-  // handleRoomFormChange is for the old inline RoomsTab form, may need review if RoomsTab is removed/changed
-  const handleRoomFormChange = (e) => {
-    const { name, value } = e.target;
-    if (name === "roomConfigurationType") {
-      const selectedConfig = roomConfigurationTypes.find(config => config._id === value);
-      setRoomForm(prevForm => ({
-        ...prevForm,
-        roomConfigurationType: value,
-        price: selectedConfig ? selectedConfig.baseRent : '',
-        occupancy: {
-          ...prevForm.occupancy,
-          max: selectedConfig ? selectedConfig.baseSharingCapacity : '',
-        }
-      }));
-    } else if (name === "occupancy.max") { 
-        setRoomForm(prevForm => ({
-            ...prevForm,
-            occupancy: { ...prevForm.occupancy, max: value }
-        }));
-    } else {
-      setRoomForm(prevForm => ({
-        ...prevForm,
-        [name]: value,
-      }));
-    }
+  // Tenant Management Handlers
+  const handleOpenAddTenantModal = () => {
+    console.log('[NewAdminDashboard] handleOpenAddTenantModal called');
+    setCurrentEditingTenantData(initialTenantFormState); // Use initialTenantFormState for a new tenant
+    setShowEditTenantModal(true);
   };
 
-  const handleEditModalFormChange = (e) => {
-    const { name, value } = e.target;
-    setCurrentEditingRoom(prevRoom => {
-      if (!prevRoom) return null;
-
-      if (name === "roomConfigurationType") {
-        const selectedConfig = roomConfigurationTypes.find(config => config._id === value);
-        return {
-          ...prevRoom,
-          roomConfigurationType: value,
-          price: selectedConfig ? selectedConfig.baseRent : prevRoom.price,
-          occupancy: {
-            ...prevRoom.occupancy,
-            max: selectedConfig ? selectedConfig.baseSharingCapacity : prevRoom.occupancy.max,
-          }
-        };
-      } else if (name === "occupancy.max") {
-          return {
-              ...prevRoom,
-              occupancy: { ...prevRoom.occupancy, max: parseInt(value, 10) || 0 }
-          };
-      } else {
-        return {
-          ...prevRoom,
-          [name]: value
-        };
-      }
-    });
-  };
-
-  const handleTenantFormChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    const val = type === 'checkbox' ? checked : value;
-
-    if (name.startsWith("securityDeposit.")) {
-      const sdField = name.split('.')[1];
-      setCurrentTenantForm(prevForm => ({
-        ...prevForm,
-        securityDeposit: { ...prevForm.securityDeposit, [sdField]: val }
-      }));
-    } else {
-      setCurrentTenantForm(prevForm => ({ ...prevForm, [name]: val }));
-    }
-  };
-  
-  // New handlers for EditTenantModal
-  const handleEditTenantTriggerModal = (tenant) => {
-    const tenantDataForModal = {
+  const handleEditTenant = (tenant) => {
+    console.log('[NewAdminDashboard] handleEditTenant called with:', tenant);
+     const tenantDataForModal = {
       ...tenant,
       _id: tenant._id,
       name: tenant.name || '',
@@ -539,102 +477,131 @@ const NewAdminDashboard = () => {
             : tenant.room || null,
       bedNumber: tenant.bedNumber || '',
       customRent: tenant.customRent || '',
+      aadharFileName: tenant.aadharFileName || '', // Ensure aadharFileName is included
     };
     console.log('[NewAdminDashboard] Data prepared for EditTenantModal:', tenantDataForModal);
-    setCurrentEditingTenantData(tenantDataForModal);
+    setCurrentEditingTenantData(tenantDataForModal); 
     setShowEditTenantModal(true);
   };
 
-  const handleCloseEditTenantModal = () => {
-    console.log('[NewAdminDashboard] handleCloseEditTenantModal called');
-    console.log('[NewAdminDashboard] showEditTenantModal before set: ', showEditTenantModal);
+  const handleCancelEditTenant = () => {
+    console.log('[NewAdminDashboard] handleCancelEditTenant called');
     setShowEditTenantModal(false);
-    setCurrentEditingTenantData(null);
-    // It's good practice to log the state *after* an async setter, but React might batch updates.
-    // A useEffect hook watching showEditTenantModal would be more reliable for logging the after-state.
-    // For now, this will at least confirm the function ran and tried to set it to false.
-    console.log('[NewAdminDashboard] Attempted to set showEditTenantModal to false');
+    setCurrentEditingTenantData(null); 
   };
 
-  const handleSaveTenantInModal = async (updatedTenantData) => {
-    // Token is handled by Axios interceptor
-    if (!updatedTenantData || !updatedTenantData._id) {
-      alert("Error: Tenant data or ID is missing for update.");
-      return;
-    }
-    console.log('[NewAdminDashboard] Attempting to save tenant via Modal. Data to be sent to API:', JSON.stringify(updatedTenantData, null, 2));
+  // This is the primary save handler for tenants, used by EditTenantModal
+  const handleSaveTenant = async (tenantData, aadharFile) => {
+    console.log('[NewAdminDashboard] handleSaveTenant (for Modal) called with tenantData:', tenantData, 'Aadhar File:', aadharFile);
+    
+    // Log the critical fields from tenantData received by this handler
+    console.log('[NewAdminDashboard] handleSaveTenant - Received tenantData.name:', tenantData?.name);
+    console.log('[NewAdminDashboard] handleSaveTenant - Received tenantData.contact:', tenantData?.contact);
+    console.log('[NewAdminDashboard] handleSaveTenant - Received tenantData.email:', tenantData?.email);
+
     try {
-      await updateTenant(updatedTenantData._id, updatedTenantData); // Token no longer passed
-      alert('Tenant updated successfully');
-      fetchData();
-      handleCloseEditTenantModal();
+      const formData = new FormData();
+
+      for (const key in tenantData) {
+        if (tenantData.hasOwnProperty(key)) {
+          if (key === 'securityDeposit' && typeof tenantData[key] === 'object' && tenantData[key] !== null) {
+            formData.append(key, JSON.stringify(tenantData[key]));
+          } else if (tenantData[key] !== null && tenantData[key] !== undefined) {
+            formData.append(key, tenantData[key]);
+          }
+        }
+      }
+
+      if (aadharFile) {
+        formData.append('aadharFile', aadharFile);
+      }
+      
+      console.log("[NewAdminDashboard] FormData to be sent:");
+      for (let pair of formData.entries()) {
+        console.log(pair[0]+ '=' + (pair[1] instanceof File ? `File: ${pair[1].name}` : pair[1]));
+      }
+
+      if (tenantData._id) {
+        console.log(`[NewAdminDashboard] Updating tenant with ID: ${tenantData._id}`);
+        await updateTenant(tenantData._id, formData);
+      } else {
+        console.log("[NewAdminDashboard] Adding new tenant.");
+        await addTenant(formData);
+      }
+
+      alert(tenantData._id ? 'Tenant updated successfully' : 'Tenant added successfully');
+      fetchData(); 
+      setShowEditTenantModal(false);
+      setCurrentEditingTenantData(null);
     } catch (error) {
-      console.error("Error updating tenant:", error.response || error);
-      alert(`Error updating tenant: ${error.response?.data?.error || error.message}`);
+      console.error("Error saving tenant:", error.response || error);
+      alert(`Error saving tenant: ${error.response?.data?.error || error.message}`);
     }
   };
 
-  const handleAddNewTenantViaModal = () => {
-    // Open the EditTenantModal but without initial data, or with a clear "add mode" flag
-    // For simplicity, we can reuse EditTenantModal if it can handle a null/empty initialTenantData for add mode
-    // Or, have a separate AddTenantModal if logic differs significantly
-    setCurrentEditingTenantData(initialTenantFormState); // Use initialTenantFormState for a new tenant
-    setShowEditTenantModal(true);
-  };
-
-  const handleSaveNewTenantInModal = async (newTenantData) => {
-    try {
-      // Remove _id if it's empty or null, as it's a new tenant
-      const { _id, ...dataToSave } = newTenantData;
-      await addTenant(dataToSave);
-      alert('Tenant added successfully');
-      fetchData();
-      handleCloseEditTenantModal();
-    } catch (error) {
-      console.error("Error adding new tenant:", error.response || error);
-      alert(`Error adding new tenant: ${error.response?.data?.error || error.message}`);
-    }
-  };
-
-  const handleDeleteTenantInDashboard = async (tenantId) => {
+  const handleDeleteExistingTenant = async (tenantId) => { 
     if (window.confirm('Are you sure you want to delete this tenant?')) {
       try {
-        await deleteTenant(tenantId);
+        await deleteTenant(tenantId); 
         alert('Tenant deleted successfully');
-        fetchData(); // Refresh tenant list
+        fetchData(); 
       } catch (error) {
-        console.error('Error deleting tenant:', error.response || error);
+        console.error("Error deleting tenant:", error.response || error);
         alert(`Error deleting tenant: ${error.response?.data?.error || error.message}`);
       }
     }
   };
 
-  // Simplified handleSaveTenant for TenantRegistrationForm (if still used)
-  const handleSaveTenant = async (tenantDataToSave) => {
+  const handleTenantFormChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    const val = type === 'checkbox' ? checked : value;
+    if (name.startsWith("securityDeposit.")) {
+      const sdField = name.split('.')[1];
+      setCurrentTenantForm(prevForm => ({
+        ...prevForm,
+        securityDeposit: { ...prevForm.securityDeposit, [sdField]: val }
+      }));
+    } else {
+      setCurrentTenantForm(prevForm => ({ ...prevForm, [name]: val }));
+    }
+  };
+  
+  const handleRegisterTenant = async (tenantDataToSave) => {
     try {
       await addTenant(tenantDataToSave);
       alert('Tenant registered successfully!');
       fetchData();
-      setCurrentTenantForm(initialTenantFormState); // Reset form
-      // Optionally navigate away or clear form further
+      setCurrentTenantForm(initialTenantFormState);
     } catch (error) {
-      console.error("Error registering tenant:", error.response || error);
+      console.error('Error registering tenant:', error.response || error);
       alert(`Error registering tenant: ${error.response?.data?.error || error.message}`);
     }
   };
 
-  // Placeholder for handleConfirmRoomAllocation if needed by AllocateRoomModal
-  const handleConfirmRoomAllocation = async (tenantId, roomId, bedNumber) => {
-    console.log("Confirming allocation:", { tenantId, roomId, bedNumber });
-    // Implementation for updating tenant with room/bed and room occupancy
-    // This would typically involve calling updateTenant and possibly updateRoom APIs
-    // For now, just a placeholder
-    alert('Room allocation confirmation logic to be implemented.');
-    setShowAllocateRoomModal(false);
-    fetchData(); // Refresh data after potential changes
+  // Dummy handlers for props that might be expected by child components but not fully implemented
+  const handleRoomFormChange = (e) => {
+    const { name, value } = e.target;
+    setRoomForm(prev => ({ ...prev, [name]: value }));
   };
 
-  // Render main content based on activeTab
+  const handleEditModalFormChange = (updatedRoomData) => {
+    // This function is meant to update the state of the currently editing room
+    // based on changes in the EditRoomModal.
+    // It might be more complex if the modal directly manipulates a local state
+    // and only calls onSave with the final data.
+    // For now, let's assume it updates currentEditingRoom.
+    setCurrentEditingRoom(prev => ({ ...prev, ...updatedRoomData }));
+  };
+  
+  const handleConfirmRoomAllocation = (tenantId, roomId, bedNumber) => {
+    // Placeholder for room allocation logic
+    console.log(`Allocating room ${roomId}, bed ${bedNumber} to tenant ${tenantId}`);
+    // This would typically involve an API call and then fetchData()
+    setShowAllocateRoomModal(false);
+    setTenantForAllocation(null);
+  };
+
+
   const renderMainContent = () => {
     if (activeTab === 'Dashboard') {
       return (
@@ -648,16 +615,16 @@ const NewAdminDashboard = () => {
           <SummaryCard title="Total Vacant" value={`${dashboardSummary.totalVacantBeds} Beds`} icon="🚪" />
         </div>
       );
-    } else if (activeTab === 'Rooms') { // This 'Rooms' tab might be for a different purpose or can be removed if all room management is via Admin Console
+    } else if (activeTab === 'Rooms') {
       return (
         <div className={styles.roomsTabContainer}>
           <RoomsTab
             rooms={filteredRooms}
-            onAddRoom={handleAddActualRoom} // Ensure this is the correct handler if this tab is kept
-            onEditRoom={handleEditActualRoom} // Ensure this is the correct handler
-            onDeleteRoom={handleDeleteActualRoom} // Ensure this is the correct handler
+            onAddRoom={handleAddActualRoom}
+            onEditRoom={handleEditActualRoom}
+            onDeleteRoom={handleDeleteActualRoom}
             roomForm={roomForm} 
-            onFormChange={handleRoomFormChange}
+            onFormChange={handleRoomFormChange} // Added
             roomConfigurationTypes={roomConfigurationTypes}
             tenants={tenants}
             getTenantsForRoom={getTenantsForRoom}
@@ -669,11 +636,11 @@ const NewAdminDashboard = () => {
         <div className={styles.tenantsTabContainer}>
           <TenantsTab 
             tenants={tenants}
-            rooms={rooms} // Pass rooms data
-            roomConfigurationTypes={roomConfigurationTypes} // Pass room config types
-            onEditTenant={handleEditTenantTriggerModal} // Renamed prop
-            onDeleteTenant={handleDeleteTenantInDashboard} // Pass the new handler
-            onAddNewTenant={handleAddNewTenantViaModal} // Prop to open modal for new tenant
+            rooms={rooms}
+            roomConfigurationTypes={roomConfigurationTypes}
+            onEditTenant={handleEditTenant}
+            onDeleteTenant={handleDeleteExistingTenant}
+            onAddNewTenant={handleOpenAddTenantModal}
           />
         </div>
       );
@@ -683,29 +650,29 @@ const NewAdminDashboard = () => {
           <TenantRegistrationForm
             tenantForm={currentTenantForm}
             handleTenantFormChange={handleTenantFormChange}
-            handleSaveTenant={handleSaveTenant}
+            handleSaveTenant={handleRegisterTenant}
             roomConfigurationTypes={roomConfigurationTypes}
+            rooms={rooms}
           />
         </div>
       );
     } else if (activeTab === 'Admin Console') {
-      // Render AdminConsole directly, passing necessary props
       return (
         <AdminConsole
-          actualRoomsFromParent={rooms}
+          rooms={rooms}
           onAddActualRoom={handleAddActualRoom}
           onEditActualRoom={handleEditActualRoom}
           onDeleteActualRoom={handleDeleteActualRoom}
-          // roomConfigurationTypes will be fetched within AdminConsole itself
+          // Pass room configuration types and management props
+          roomConfigurationTypesFromParent={roomConfigurationTypes}
+          isLoadingRoomConfigsFromParent={isLoadingRoomConfigs}
+          onRefreshRoomConfigurationTypes={refreshRoomConfigurationTypes}
+          // Pass other necessary props if AdminConsole needs them, e.g., tenants for some views
+          // tenants={tenants} // This was passed before, check if AdminConsole still needs it directly
         />
       );
-      // REMOVE old logic for showUserManagementConsole, showRoomConfigurationManagement, showRoomsAndRentSetup
-      // if (showUserManagementConsole) { ... }
-      // if (showRoomConfigurationManagement) { ... }
-      // if (showRoomsAndRentSetup) { ... }
-      // return ( <div className={styles.adminConsoleContainer}> ... old card grid ... </div> );
     } else if (activeTab === 'Room Booking') {
-      return <div className={styles.roomBookingPageContainer}><RoomBookingPage rooms={rooms} tenants={tenants} roomConfigurationTypes={roomConfigurationTypes} /></div>;
+      return <div className={styles.roomBookingPageContainer}><RoomBookingPage rooms={rooms} tenants={tenants} roomConfigurationTypes={roomConfigurationTypes}/></div>;
     } else if (activeTab === 'Rent Payment') {
       return <div className={styles.comingSoonContainer}><ComingSoon pageTitle="Rent Payment" /></div>;
     } else if (activeTab === 'Reports') {
@@ -715,18 +682,16 @@ const NewAdminDashboard = () => {
     } else if (activeTab === 'AI Chatbot') {
       return <div className={styles.comingSoonContainer}><ComingSoon pageTitle="AI Chatbot" /></div>;
     }
-    // Fallback for any other activeTab value not explicitly handled above
-    // console.warn(`Unhandled activeTab: ${activeTab}, rendering default dashboard.`);
-    return (
+    return ( // Fallback to Dashboard content
       <div className={styles.dashboardGrid}>
-          <SummaryCard title="Rent Forecast" value={`₹${dashboardSummary.rentForecast.toLocaleString()}`} icon="💰" />
-          <SummaryCard title="Rent Received" value={`₹${dashboardSummary.rentReceived.toLocaleString()}`} icon="✅" />
-          <SummaryCard title="Rent Pending" value={`₹${dashboardSummary.rentPending.toLocaleString()}`} icon="⏳" />
-          <SummaryCard title="Security Deposits" value={`₹${dashboardSummary.totalSecurityDeposits.toLocaleString()}`} icon="🛡️" />
-          <SummaryCard title="Total Capacity" value={`${dashboardSummary.totalCapacity} Beds`} icon="🛌" />
-          <SummaryCard title="Total Occupied" value={`${dashboardSummary.totalOccupiedBeds} Beds`} icon="🧑‍🤝‍🧑" />
-          <SummaryCard title="Total Vacant" value={`${dashboardSummary.totalVacantBeds} Beds`} icon="🚪" />
-        </div>
+        <SummaryCard title="Rent Forecast" value={`₹${dashboardSummary.rentForecast.toLocaleString()}`} icon="💰" />
+        <SummaryCard title="Rent Received" value={`₹${dashboardSummary.rentReceived.toLocaleString()}`} icon="✅" />
+        <SummaryCard title="Rent Pending" value={`₹${dashboardSummary.rentPending.toLocaleString()}`} icon="⏳" />
+        <SummaryCard title="Security Deposits" value={`₹${dashboardSummary.totalSecurityDeposits.toLocaleString()}`} icon="🛡️" />
+        <SummaryCard title="Total Capacity" value={`${dashboardSummary.totalCapacity} Beds`} icon="🛌" />
+        <SummaryCard title="Total Occupied" value={`${dashboardSummary.totalOccupiedBeds} Beds`} icon="🧑‍🤝‍🧑" />
+        <SummaryCard title="Total Vacant" value={`${dashboardSummary.totalVacantBeds} Beds`} icon="🚪" />
+      </div>
     );
   }; // Correct placement of the closing brace for renderMainContent
 
@@ -738,35 +703,45 @@ const NewAdminDashboard = () => {
       </main>
       {showEditRoomModal && currentEditingRoom && (
         <EditRoomModal
-          roomData={currentEditingRoom} // Pass the full room object
+          roomData={currentEditingRoom}
           roomConfigurationTypes={roomConfigurationTypes}
           onClose={() => {
             setShowEditRoomModal(false);
             setCurrentEditingRoom(null);
           }}
-          onSave={handleUpdateActualRoom} // RENAMED from handleUpdateRoom
-          onFormChange={handleEditModalFormChange} // Pass the handler for form changes within the modal
-          tenants={tenants} // Pass tenants for bed assignment logic
+          onSave={handleUpdateActualRoom}
+          onFormChange={handleEditModalFormChange} 
+          tenants={tenants}
         />
       )}
       {showEditTenantModal && (
         <EditTenantModal 
-          editingTenant={currentEditingTenantData} // This can be a new tenant (initialTenantFormState) or existing
-          rooms={rooms}
+          editingTenant={currentEditingTenantData} 
+          rooms={rooms} 
+          handleCancelEditTenant={handleCancelEditTenant} 
+          onSaveTenant={handleSaveTenant}
+          ACCOMMODATION_TYPES={ACCOMMODATION_TYPES} 
+          RENT_STATUS={RENT_STATUS} 
           allRoomConfigurationTypes={roomConfigurationTypes}
-          allTenants={tenants} // Pass all tenants for bed conflict checking
-          handleCancelEditTenant={handleCloseEditTenantModal}
-          onSaveTenant={currentEditingTenantData?._id ? handleSaveTenantInModal : handleSaveNewTenantInModal} // Conditional save
-          ACCOMMODATION_TYPES={ACCOMMODATION_TYPES} // Pass constants if needed by modal
-          RENT_STATUS={RENT_STATUS} // Pass constants if needed by modal
+          allTenants={tenants} 
         />
       )}
       {showAllocateRoomModal && tenantForAllocation && (
         <AllocateRoomModal
-          tenant={tenantForAllocation}
-          onClose={() => setShowAllocateRoomModal(false)}
-          onConfirm={handleConfirmRoomAllocation}
-          rooms={filteredRooms}
+          show={showAllocateRoomModal}
+          onClose={() => {
+              setShowAllocateRoomModal(false);
+              setTenantForAllocation(null); 
+          }}
+          tenantId={tenantForAllocation._id}
+          tenantName={tenantForAllocation.name}
+          preferredRoomConfigId={tenantForAllocation.preferredRoomType}
+          allRoomConfigs={roomConfigurationTypes}
+          onAllocationSuccess={() => {
+              fetchData(); 
+              setShowAllocateRoomModal(false); 
+              setTenantForAllocation(null);
+          }}
         />
       )}
     </div>
